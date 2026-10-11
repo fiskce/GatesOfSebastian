@@ -180,6 +180,20 @@ table.history { width: 100%; border-collapse: collapse; font-size: 13px; }
   .fine { margin-top: 8px; }
 }
 
+select { font: inherit; font-size: 14px; color: #fff; background: #0b0418; border: 1px solid #4a3a78; border-radius: 8px; padding: 6px 8px; }
+select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+.stats-wrap { max-height: none; }
+table.stats td:not(:first-child), table.stats th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+table.stats td:first-child { color: var(--muted); }
+.ach-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.ach { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 10px; border: 1px solid #3c2a68; background: rgba(255, 255, 255, .03); opacity: .55; }
+.ach.on { opacity: 1; border-color: var(--gold-lo); background: linear-gradient(180deg, rgba(242, 196, 90, .12), rgba(242, 196, 90, .03)); }
+.ach .medal { font-size: 20px; line-height: 1; color: var(--gold); }
+.ach b { display: block; font-size: 13.5px; } .ach small { display: block; font-size: 12px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+
+/* lowest quality level: no backdrop blur (it is expensive without a GPU) */
+.lite #splash, .lite .modal { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {

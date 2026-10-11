@@ -12,7 +12,9 @@
   const anim = {};   // per-button smoothed hover/press values
   G.button = (id, x, y, w, h, onClick, opts) => {
     opts = opts || {};
-    G.L.buttons.push({ id, x, y, w, h, onClick, shape: opts.shape, disabled: !!opts.disabled, label: opts.label || id });
+    const m = G.ctx.getTransform();
+    const plain = m.a === G.DPR && m.d === G.DPR && !m.b && !m.c && !m.e && !m.f;
+    G.L.buttons.push({ id, x, y, w, h, onClick, shape: opts.shape, disabled: !!opts.disabled, label: opts.label || id, inv: plain ? null : m.inverse() });
     const a = anim[id] || (anim[id] = { h: 0, p: 0 });
     const hov = G.hoverId === id && !opts.disabled, pr = G.pressId === id && !opts.disabled;
     a.h += ((hov ? 1 : 0) - a.h) * 0.25; a.p += ((pr ? 1 : 0) - a.p) * 0.45;
@@ -59,6 +61,12 @@
       case 'plus': ctx.beginPath(); ctx.moveTo(-r * 0.55, 0); ctx.lineTo(r * 0.55, 0); ctx.moveTo(0, -r * 0.55); ctx.lineTo(0, r * 0.55); ctx.stroke(); break;
       case 'minus': ctx.beginPath(); ctx.moveTo(-r * 0.55, 0); ctx.lineTo(r * 0.55, 0); ctx.stroke(); break;
       case 'stop': G.roundRect(ctx, -r * 0.42, -r * 0.42, r * 0.84, r * 0.84, r * 0.12); ctx.fill(); break;
+      case 'trophy':
+        ctx.beginPath(); ctx.moveTo(-r * 0.55, -r * 0.8); ctx.lineTo(r * 0.55, -r * 0.8); ctx.lineTo(r * 0.45, -r * 0.05);
+        ctx.quadraticCurveTo(0, r * 0.35, -r * 0.45, -r * 0.05); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.arc(-r * 0.62, -r * 0.45, r * 0.26, Math.PI * 0.5, Math.PI * 1.5); ctx.stroke();
+        ctx.beginPath(); ctx.arc(r * 0.62, -r * 0.45, r * 0.26, -Math.PI * 0.5, Math.PI * 0.5); ctx.stroke();
+        ctx.fillRect(-r * 0.09, r * 0.15, r * 0.18, r * 0.4); ctx.fillRect(-r * 0.45, r * 0.55, r * 0.9, r * 0.22); break;
     }
     ctx.restore();
   };
@@ -86,59 +94,6 @@
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.sin(p * Math.PI) * 0.9;
       const gx = b.x + b.w * (p * 1.2 - 0.1);
       ctx.drawImage(FX.starSprite(), gx - b.h * 0.25, b.y + b.h * 0.55 - b.h * 0.25, b.h * 0.5, b.h * 0.5);
-      ctx.restore();
-    }
-  };
-
-  // ---------------- Sebastian ----------------
-  H.sebRect = null;
-  H.sebMuzzle = () => {
-    const r = H.sebRect, seb = B.seb;
-    if (!r || !seb) return { x: G.L.seb.x + G.L.seb.w * 0.2, y: G.L.seb.y + G.L.seb.h * 0.6 };
-    return { x: r.x + seb.tip[0] * r.w, y: r.y + seb.tip[1] * r.h };
-  };
-  H.drawSebastian = ctx => {
-    const L = G.L, box = L.seb, seb = B.seb, t = G.clock.real;
-    if (!seb) return;
-    const aspect = seb.w / seb.h;
-    let h = box.h * (L.portrait ? 0.98 : 0.9), w = h * aspect;
-    const maxW = box.w * (L.portrait ? 1.05 : 1.2);
-    if (w > maxW) { w = maxW; h = w / aspect; }
-    const throwAge = G.clock.real - (S.sebThrowT || -9);
-    const cheer = Math.max(0, 1 - (G.clock.real - (S.sebCheerT || -9)) / 1.4);
-    const bob = Math.sin(t * 1.4) * h * 0.012 - Math.abs(Math.sin(cheer * Math.PI * 3)) * h * 0.06 * cheer;
-    const breathe = 1 + Math.sin(t * 2.1) * 0.006;
-    const cx = box.x + box.w * (L.portrait ? 0.5 : 0.52), floor = box.y + box.h;
-    const x = cx - w / 2, y = floor - h + bob;
-    H.sebRect = { x, y, w, h };
-    // recoil after throwing a bolt
-    const rec = throwAge < 0.45 ? Math.sin((throwAge / 0.45) * Math.PI) * (1 - throwAge / 0.45) : 0;
-    // cloud he stands on
-    const cl = FX.softSprite(S.mood > 0.5 ? '#ffe2b0' : '#efe2ff');
-    for (let k = 0; k < 7; k++) {
-      const px = cx + (k - 3) * w * 0.16 + Math.sin(t * 0.7 + k) * w * 0.02, s = w * (0.2 + (k % 3) * 0.05);
-      ctx.globalAlpha = 0.5; ctx.drawImage(cl, px - s, floor - s * 0.55, s * 2, s * 1.1);
-    }
-    ctx.globalAlpha = 1;
-    // aura (rim glow), stronger in free spins and right after a throw
-    const glow = S.mood > 0.5 ? seb.glowF : seb.glowB;
-    if (glow) {
-      const k = w / seb.w;
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.45 + 0.15 * Math.sin(t * 2.4) + rec * 0.6 + cheer * 0.4 + S.mood * 0.2;
-      ctx.drawImage(glow.c, x - glow.pad * k, y - glow.pad * k, glow.c.width * k, glow.c.height * k);
-      ctx.restore();
-    }
-    ctx.save();
-    ctx.translate(cx, floor); ctx.rotate(-rec * 0.07); ctx.scale(1, breathe); ctx.translate(-cx, -floor);
-    ctx.drawImage(seb.img, x + rec * w * 0.04, y, w, h);
-    ctx.restore();
-    // muzzle flash
-    if (throwAge < 0.25) {
-      const m = H.sebMuzzle(), a = 1 - throwAge / 0.25, s = w * 0.35 * (0.6 + a);
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a;
-      ctx.drawImage(FX.glowSprite('#9fe6ff'), m.x - s, m.y - s, s * 2, s * 2);
-      ctx.drawImage(FX.starSprite(), m.x - s * 0.8, m.y - s * 0.8, s * 1.6, s * 1.6);
       ctx.restore();
     }
   };
@@ -273,6 +228,7 @@
     ctx.font = G.font(size, 900, true);
     const tw = Math.min(maxW, ctx.measureText(line).width) + size * 2.2, th = size * 1.75;
     const x = G.clamp(p.cx - tw / 2, 4, G.W - tw - 4), y = p.y - th / 2, cx = x + tw / 2;
+    H.plaqueC = { x: cx, y: p.y };
     // ribbon
     const g = ctx.createLinearGradient(0, y, 0, y + th);
     g.addColorStop(0, 'rgba(70,16,30,.92)'); g.addColorStop(1, 'rgba(30,6,14,.95)');
@@ -388,6 +344,7 @@
       ['settings', 'settings', () => G.UI.open('settings'), 'Settings'],
       ['sound', G.settings.sfx || G.settings.music ? 'sound' : 'mute', () => G.Game.toggleSound(), 'Sound'],
       ['history', 'history', () => G.UI.open('fair'), 'History & fairness'],
+      ['stats', 'trophy', () => G.UI.open('stats'), 'Stats & achievements'],
       ['full', 'full', () => G.UI.fullscreen(), 'Fullscreen'],
     ];
     icons.forEach(([id, name, fn, label]) => { iconButton(ctx, id, name, x, cy - bb.h * 0.08, isz, fn, { label }); x += ig; });

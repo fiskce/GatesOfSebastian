@@ -6,7 +6,9 @@
 <meta name="theme-color" content="#0b0520" />
 <meta name="description" content="Gates of Sebastian — a Gates of Olympus–style tumbling slot drawn on one HTML5 canvas, with a simulation-tuned engine and provably fair spins." />
 <title>Gates of Sebastian</title>
-<link rel="apple-touch-icon" sizes="180x180" href="https://source.bg.or.at/www/branding/beriffagroup/apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" type="image/png" sizes="32x32" href="https://source.bg.or.at/www/branding/beriffagroup/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="https://source.bg.or.at/www/branding/beriffagroup/favicon-16x16.png">
 <link rel="preload" href="assets/fonts/cinzel-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -94,7 +96,14 @@
       <label class="row"><span>Music</span><input type="checkbox" id="musicToggle" class="switch" /></label>
       <label class="row"><span>Sound effects</span><input type="checkbox" id="sfxToggle" class="switch" /></label>
       <label class="row"><span>Turbo spin</span><input type="checkbox" id="turboToggle" class="switch" /></label>
-      <label class="row"><span>Reduce motion <small>(no shake or zoom)</small></span><input type="checkbox" id="motionToggle" class="switch" /></label>
+      <label class="row"><span>Dynamic music <small>(drums that follow the action)</small></span><input type="checkbox" id="dynMusicToggle" class="switch" /></label>
+      <label class="row"><span>Graphics quality</span>
+        <select id="qualitySelect">
+          <option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+        </select></label>
+      <label class="row"><span>Motion tilt <small>(mouse / phone tilt parallax)</small></span><input type="checkbox" id="tiltToggle" class="switch" /></label>
+      <label class="row" id="hapticsRow"><span>Vibration</span><input type="checkbox" id="hapticsToggle" class="switch" /></label>
+      <label class="row"><span>Reduce motion <small>(no shake, zoom or tilt)</small></span><input type="checkbox" id="motionToggle" class="switch" /></label>
       <button id="resetCredit" class="ghost">Reset demo balance</button>
       <button class="primary" data-close>Close</button>
     </div>
@@ -148,6 +157,18 @@
     </div>
   </div>
 
+  <!-- Stats & achievements -->
+  <div id="m-stats" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-stats">
+    <div class="card" tabindex="-1">
+      <h2 id="t-stats">Stats &amp; achievements</h2>
+      <div class="table-wrap stats-wrap"><table class="history stats" id="statsTable"></table></div>
+      <h3>Achievements <span class="faint" id="achCount"></span></h3>
+      <div id="achList" class="ach-list"></div>
+      <button id="resetStats" class="ghost">Reset stats &amp; achievements</button>
+      <button class="primary" data-close>Close</button>
+    </div>
+  </div>
+
   <!-- Mobile menu -->
   <div id="m-menu" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-menu">
     <div class="card narrow" tabindex="-1">
@@ -155,6 +176,7 @@
       <button class="menu-item" data-open="info">How to play &amp; paytable</button>
       <button class="menu-item" data-open="settings">Settings</button>
       <button class="menu-item" data-open="fair">Provably fair &amp; history</button>
+      <button class="menu-item" data-open="stats">Stats &amp; achievements</button>
       <button class="menu-item" id="menuFull">Fullscreen</button>
       <button class="primary" data-close>Close</button>
     </div>
@@ -164,12 +186,15 @@
   <script src="js/fair.js"></script>
   <script src="js/symbols.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/music.js"></script>
   <script src="js/core.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/scene.js"></script>
   <script src="js/board.js"></script>
+  <script src="js/sebastian.js"></script>
   <script src="js/hud.js"></script>
   <script src="js/overlays.js"></script>
+  <script src="js/stats.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/game.js"></script>
 </body>

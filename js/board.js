@@ -24,8 +24,8 @@
   };
   const SEB_IMAGE = 'assets/sebastian.png';
 
-  const SPR = 200;
-  B.spr = {}; B.glow = {}; B.lit = {};
+  const SPR = 200, SHINE = 120, SHINE_FRAMES = 10;
+  B.spr = {}; B.glow = {}; B.lit = {}; B.shine = {};
   B.seb = null;
 
   function loadImg(src) {
@@ -61,6 +61,21 @@
     return c;
   }
 
+  // a diagonal band of light sweeping across the gem, masked to its shape
+  function shineFrames(src) {
+    const frames = [];
+    for (let k = 0; k < SHINE_FRAMES; k++) {
+      const c = document.createElement('canvas'); c.width = c.height = SHINE;
+      const x = c.getContext('2d'), bx = (-0.45 + (k / (SHINE_FRAMES - 1)) * 1.9) * SHINE;
+      const g = x.createLinearGradient(bx - SHINE * 0.22, bx * 0.4 - SHINE * 0.1, bx + SHINE * 0.22, bx * 0.4 + SHINE * 0.1);
+      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,252,235,.95)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g; x.fillRect(0, 0, SHINE, SHINE);
+      x.globalCompositeOperation = 'destination-in'; x.drawImage(src, 0, 0, SHINE, SHINE);
+      frames.push(c);
+    }
+    return frames;
+  }
+
   B.loadAssets = async onProgress => {
     const ids = Object.keys(SYMBOL_IMAGES);
     let done = 0;
@@ -72,6 +87,7 @@
       B.spr[id] = fit(img, SPR, 4);
       B.glow[id] = halo(B.spr[id], G.SYMBOL_COLORS[id], SPR + 80, 26);
       B.lit[id] = silhouette(B.spr[id], '#ffffff');
+      B.shine[id] = shineFrames(B.spr[id]);
       tick();
     }));
     const seb = await loadImg(SEB_IMAGE);
@@ -85,12 +101,13 @@
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
     const x = c.getContext('2d'); x.drawImage(img, 0, 0);
     let d;
-    try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { return { img, c: null, w: img.width, h: img.height, tip: [0.05, 0.82] }; }
+    const plain = { img, c: null, w: img.width, h: img.height, tip: [0.05, 0.82], ox: 0, oy: 0, srcW: img.width, srcH: img.height };
+    try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { return plain; }   // file:// taints the canvas
     let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
     for (let y = 0; y < c.height; y++) for (let xx = 0; xx < c.width; xx++) {
       if (d[(y * c.width + xx) * 4 + 3] > 40) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     }
-    if (x1 <= x0) return { img, c: null, w: img.width, h: img.height, tip: [0.05, 0.82] };
+    if (x1 <= x0) return plain;
     const w = x1 - x0 + 1, h = y1 - y0 + 1;
     const o = document.createElement('canvas'); o.width = w; o.height = h;
     o.getContext('2d').drawImage(c, x0, y0, w, h, 0, 0, w, h);
@@ -99,7 +116,7 @@
     for (let xx = x0; xx <= x1 && !tip.found; xx++) for (let y = y0; y <= y1; y++) {
       if (d[(y * c.width + xx) * 4 + 3] > 120) { tip = [(xx - x0) / w, (y - y0) / h]; tip.found = true; break; }
     }
-    return { img: o, w, h, tip, glowB: halo2(o, '#7fd4ff'), glowF: halo2(o, '#ffc04a') };
+    return { img: o, w, h, tip, ox: x0, oy: y0, srcW: img.width, srcH: img.height, glowB: halo2(o, '#7fd4ff'), glowF: halo2(o, '#ffc04a') };
   }
   function halo2(src, color) {
     const pad = 40, c = document.createElement('canvas'); c.width = src.width + pad * 2; c.height = src.height + pad * 2;
@@ -147,8 +164,9 @@
   };
 
   // ---------------- cells ----------------
+  // shineT / flipT: < 0 waiting (delay), 0..1 playing, null idle
   B.cells = Array.from({ length: CELLS }, () => ({ id: 'gold', y: 0, vy: 0, falling: false, delay: 0, squash: 0, win: false, dim: false,
-    pop: -1, flash: 0, landed: true }));
+    pop: -1, flash: 0, landed: true, shineT: null, flipT: null }));
   B.exiting = [];
   B.colAntic = new Array(COLS).fill(0);   // > 0 while a column is held back for anticipation
   B.orbs = [];
@@ -169,6 +187,8 @@
       const c = B.cells[i];
       c.squash = Math.max(0, c.squash - dt * 6);
       c.flash = Math.max(0, c.flash - dt * 4);
+      if (c.shineT != null) { c.shineT += dt / 0.55; if (c.shineT > 1) c.shineT = null; }
+      if (c.flipT != null) { c.flipT += dt / 0.75; if (c.flipT > 1) c.flipT = null; }
       if (!c.falling) continue;
       if (c.delay > 0) { c.delay -= dt; continue; }
       const target = Math.floor(i / COLS);
@@ -205,22 +225,27 @@
     }
     for (let i = 0; i < CELLS; i++) {
       const c = B.cells[i], col = i % COLS, r = Math.floor(i / COLS);
-      Object.assign(c, { id: board[i], y: r - ROWS - 0.8, vy: 4, falling: true, delay: plan.colDelay[col], squash: 0, win: false, dim: false, pop: -1, landed: false, fresh: true });
+      Object.assign(c, { id: board[i], y: r - ROWS - 0.8, vy: 4, falling: true, delay: plan.colDelay[col], squash: 0, win: false, dim: false, pop: -1, landed: false, fresh: true, shineT: null, flipT: null });
     }
     plan.antic.forEach(col => { B.colAntic[col] = 0.0001; });
     return B.settled();
   };
   B.stopAntic = col => { B.colAntic[col] = 0; };
+  // one diagonal sweep of light across the whole board
+  B.sweep = () => {
+    B.cells.forEach((c, i) => { if (!c.falling && c.pop < 0) c.shineT = -((i % COLS) + Math.floor(i / COLS)) * 0.05; });
+  };
   // slam stop: everything still waiting drops right now
   B.hurry = () => { B.cells.forEach(c => { if (c.falling && c.delay > 0.05) c.delay = 0.05 * Math.random(); }); B.exiting.length = 0; };
 
   B.highlight = (cellSet, on) => {
     B.highlightT = 0;
+    let k = 0;
     for (let i = 0; i < CELLS; i++) {
       const c = B.cells[i];
       c.win = on && cellSet.has(i);
       c.dim = on && !cellSet.has(i);
-      if (c.win) c.flash = 1;
+      if (c.win) { c.flash = 1; c.shineT = -0.15 - (k++ % 6) * 0.12; }    // a staggered sweep of light across the winners
     }
   };
 
@@ -246,7 +271,7 @@
       const oldY = survBottomUp.map(r => B.cells[r * COLS + c].y);
       for (let r = 0; r < ROWS; r++) {
         const i = r * COLS + c, cell = B.cells[i];
-        Object.assign(cell, { id: after[i], win: false, dim: false, pop: -1, squash: 0, flash: 0 });
+        Object.assign(cell, { id: after[i], win: false, dim: false, pop: -1, squash: 0, flash: 0, shineT: null, flipT: null });
         if (r < missing) {
           Object.assign(cell, { y: r - missing - 0.6, vy: 2, falling: true, delay: c * 0.03 + 0.05, landed: false, fresh: true });
         } else {
@@ -360,7 +385,7 @@
     ctx.drawImage(frameFront, r.x - frameM, r.y - frameM, frameFront.width / G.DPR, frameFront.height / G.DPR);
   };
 
-  let glintT = 0;
+  let glintT = 0, shineIdleT = 1, flipIdleT = 2;
   B.drawCells = (ctx, dt) => {
     const L = G.L, r = L.reel, t = G.clock.real, cs = L.cell;
     ctx.save();
@@ -411,7 +436,12 @@
         rot = Math.sin(hl * 9 + i) * 0.05;
       }
       if (c.squash > 0) { sx = 1 + 0.16 * c.squash; sy = 1 - 0.16 * c.squash; }
-      if (c.id === SCATTER && c.pop < 0) { rot += Math.sin(t * 2 + i) * 0.06; s *= 1 + 0.04 * Math.sin(t * 4 + i); }
+      if (c.id === SCATTER && c.pop < 0) { rot += Math.sin(t * 2 + i) * 0.06; s *= 1 + 0.04 * Math.sin(t * 4 + i); sx *= 0.86 + 0.14 * Math.cos(t * 1.7 + i); }
+      let edge = 0;
+      if (c.flipT != null && c.flipT >= 0 && c.pop < 0) {          // a full turn around the vertical axis
+        const k = Math.cos(c.flipT * Math.PI * 2);
+        sx *= Math.max(0.06, Math.abs(k)); edge = Math.max(0, 1 - Math.abs(k) / 0.35);
+      }
       const size = cs * s, cx = x + cs / 2, by = y + cs / 2 + (size * (1 - sy)) / 2;
       ctx.save();
       ctx.translate(cx, by); if (rot) ctx.rotate(rot); ctx.scale(sx, sy);
@@ -424,25 +454,41 @@
       }
       ctx.globalAlpha = alpha * (c.dim ? 0.32 : 1);
       ctx.drawImage(B.spr[c.id], -size / 2, -size / 2, size, size);
-      if (c.flash > 0 || (c.pop >= 0 && c.pop < 0.5)) {
+      if (c.flash > 0 || edge > 0 || (c.pop >= 0 && c.pop < 0.5)) {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.max(c.flash * 0.7, c.pop >= 0 ? (0.5 - c.pop) * 1.6 : 0);
+        ctx.globalAlpha = Math.max(c.flash * 0.7, edge * 0.55, c.pop >= 0 ? (0.5 - c.pop) * 1.6 : 0);
         ctx.drawImage(B.lit[c.id], -size / 2, -size / 2, size, size);
+      }
+      if (c.shineT != null && c.shineT >= 0 && c.pop < 0) {
+        const fr = B.shine[c.id][Math.min(SHINE_FRAMES - 1, Math.floor(c.shineT * SHINE_FRAMES))];
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = c.dim ? 0.25 : 0.8;
+        ctx.drawImage(fr, -size / 2, -size / 2, size, size);
       }
       ctx.restore();
     }
     ctx.restore();
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
 
-    // idle glints on random gems
-    glintT -= dt;
+    // the board breathes: glints, light sweeps and the odd gem turning over
+    glintT -= dt; shineIdleT -= dt; flipIdleT -= dt;
+    const idle = i => { const c = B.cells[i]; return !c.falling && c.pop < 0 && !c.win && !c.dim; };
     if (glintT <= 0) {
-      glintT = G.rand(0.12, 0.35);
+      glintT = G.rand(0.12, 0.35) / G.Q.fx;
       const i = (Math.random() * CELLS) | 0, c = B.cells[i];
       if (!c.falling && c.pop < 0) {
         const x = G.cellX(i % COLS), y = G.cellY(c.y);
         FX.star(x + cs * G.rand(0.25, 0.6), y + cs * G.rand(0.2, 0.5), cs * G.rand(0.18, 0.3), G.rand(0.4, 0.7));
       }
+    }
+    if (shineIdleT <= 0) {
+      shineIdleT = G.rand(0.25, 0.7) / G.Q.fx;
+      const i = (Math.random() * CELLS) | 0;
+      if (idle(i) && B.cells[i].shineT == null) B.cells[i].shineT = 0;
+    }
+    if (flipIdleT <= 0) {
+      flipIdleT = G.rand(1.6, 3.4) / G.Q.fx;
+      const i = (Math.random() * CELLS) | 0;
+      if (idle(i) && B.cells[i].flipT == null && B.cells[i].id !== SCATTER && !G.settings.reducedMotion) B.cells[i].flipT = 0;
     }
   };
 

@@ -1,9 +1,10 @@
 # Gates of Sebastian ⚡
 
-A Gates of Olympus–style tumbling slot, rebuilt from the ground up (v7). Sebastian stands on a cloud above Olympus and fires multiplier orbs from his shotgun. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies.
+A Gates of Olympus–style tumbling slot (v8). Sebastian stands on a cloud above Olympus and fires multiplier orbs from his shotgun. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies. It installs as an app and plays offline.
 
-![Base game](docs/base-game.jpg)
-![Free spins](docs/free-spins.jpg)
+![Base game: lightning links a winning cluster](docs/base-game.jpg)
+![Free spins: the storm grows with the multiplier](docs/free-spins.jpg)
+<img src="docs/phone.jpg" alt="Phone: Sebastian cuts in on a Mega Win" width="260">
 
 ## Play
 
@@ -13,11 +14,39 @@ Serve the folder and open it in a browser:
 python3 -m http.server 8000      # then visit http://localhost:8000
 ```
 
-Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts and synthesized sound.
+Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts and synthesized sound. Offline/install support also needs it to be served (https or localhost).
 
-**Controls:** Space or Enter spins. Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet, T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations.
+**Controls:** Space or Enter spins. Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet, T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations. Move the mouse, or tilt your phone, for parallax.
 
-## What changed from v6
+## What's new in v8
+
+Presentation only: the payout math is byte-for-byte the v7 engine (`tools/test.js` pins it with a fingerprint of 5,000 spins).
+
+**A living board and camera**
+- Gems breathe: light sweeps across them, now and then one turns over in 3D, and a glint runs diagonally across every freshly landed board.
+- **Lightning chains** link every symbol of a winning cluster. When they shatter, their sparks **stream into the TUMBLE WIN plaque**, which counts up as each one lands.
+- During a scatter tease the **camera pushes in** on each held column, the world darkens and a heartbeat takes over the music.
+- **Slow motion** when a 100×+ orb lands and when the scatter that completes a trigger drops.
+- **Parallax**: the board and sky shift against each other with the mouse or the phone's tilt.
+
+**Sebastian comes alive**
+- He **turns to aim** at the cell before he fires, leans in during teases, wiggles his head on a near miss and **jumps** at every big-win tier.
+- On big wins he **slides in over the celebration**; in free spins his **eyes glow**.
+- **Speech bubbles** ("Bullseye!", "Hold my fox…", "So close…"), rate-limited so he never nags. None of them suggest a win is due.
+
+**Bigger free spins**
+- The **storm grows with the total multiplier**: more lightning, a crimson sky, faster clouds, slanting rain and a low rumble.
+- **Milestones** at ×25, ×50, ×100, ×250 and ×500 total multiplier get their own headline, thunder and a quip.
+- **Adaptive music**: a drum layer under the soundtrack that is silent at rest, pulses while the reels spin, builds with every cascade and drives free spins.
+
+**Polish and reach**
+- **Installable and offline** (PWA): add it to a home screen and it runs without a connection.
+- **Adaptive quality**: it measures its own frame time and trims effects, particles and resolution on weak devices (and steps back up when there's headroom). Settings: Auto / High / Medium / Low.
+- **Stats and achievements**: session and all-time stats, 13 achievements with toasts (the trophy icon).
+- **Vibration** on big moments (Android), plus settings for dynamic music, motion tilt and reduced motion (which also turns off shake, zoom, push-in, tilt and flips).
+- Lightning and flashes are capped at 3 strong flashes per second (WCAG 2.3.1).
+
+## v7: the rebuild from v6
 
 **Look and feel**
 - A painted world: an Olympus skyline with golden gates on the summit, nebula, twinkling stars, drifting clouds, a slowly turning light fan and random sky lightning. It's pre-rendered per resize and cross-fades from **violet dusk** in the base game to a **golden storm** in free spins.
@@ -77,7 +106,10 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 | What | Where |
 |---|---|
 | Symbol art | Replace PNGs in `assets/symbols/` (keep the names), or edit `SYMBOL_IMAGES` in `js/board.js`. Use `''` for the built-in vector gem. |
-| Sebastian | Replace `assets/sebastian.png` with a tall image on a transparent background. It's auto-cropped, and the bolts fire from the left-most opaque pixel, his gun barrel. |
+| Sebastian | Replace `assets/sebastian.png` with a tall image on a transparent background. It's auto-cropped, and the bolts fire from the left-most opaque pixel, his gun barrel. The eye and head anchors (`EYES`, `HEAD` in `js/sebastian.js`) are measured on the original photo; with a different-sized image the eye glow switches itself off. |
+| Quips | `LINES` in `js/sebastian.js`. |
+| Achievements | `ACH` in `js/stats.js`. |
+| Offline cache | `CORE` in `sw.js`; bump `VERSION` on every release. `node tools/test.js` fails if a file the game loads is missing from it. |
 | Sounds | `SOUND_FILES` in `js/audio.js`. Leave `''` to use the synthesized sound. Every other effect is synthesized. |
 | Math | `CONFIG` in `js/engine.js`. Re-run `node tools/sim.js` after any change. |
 
@@ -87,17 +119,21 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 |---|---|
 | `js/engine.js` | Pure game math (no DOM): board, tumbles, orbs, evaluate, feature, round. Runs in Node too. |
 | `js/fair.js` | Provably-fair commit/reveal RNG with a built-in SHA-256 and HMAC |
-| `js/core.js` | Namespace, game clock, easing, formatting, persistence, responsive layout |
+| `js/core.js` | Namespace, game clock (turbo, slow-mo), adaptive quality, easing, formatting, persistence, responsive layout |
 | `js/scene.js` | The world behind the board, in two moods |
 | `js/board.js` | Sprites, tumble physics, frame, anticipation columns, orbs |
-| `js/fx.js` | Particles, lightning, floating text, camera shake, zoom and flash |
-| `js/hud.js` | Side panels, logo, Sebastian, plaque, bottom bar, vector icons |
-| `js/overlays.js` | Big win, free-spins intro and outro, banners, multiplier slam |
-| `js/game.js` | Spin orchestration, input, render loop, boot |
-| `js/ui.js` | DOM panels: rules and paytable, settings, fairness and history, buy, menu |
+| `js/fx.js` | Particles, lightning, floating text; camera shake, zoom, push-in, tilt; flash limiter |
+| `js/sebastian.js` | Sebastian: pose (aim, lean, jump, recoil), eye glow, speech bubbles, big-win cut-in |
+| `js/hud.js` | Side panels, logo, plaque, bottom bar, vector icons, hit regions |
+| `js/overlays.js` | Big win, free-spins intro and outro, banners, milestones, multiplier slam |
+| `js/stats.js` | Session and all-time stats, achievements, toasts |
+| `js/game.js` | Spin orchestration, camera, input, render loop, boot, service-worker registration |
+| `js/ui.js` | DOM panels: rules and paytable, settings, fairness and history, stats, buy, menu |
 | `js/audio.js` | Web Audio engine: files plus synth, pitch, ducking, suspense filter |
+| `js/music.js` | Adaptive drum layer and heartbeat under the soundtrack |
+| `sw.js`, `manifest.json` | Offline cache and install metadata |
 | `tools/sim.js` | Multi-threaded RTP simulator |
-| `tools/test.js` | Crypto, determinism and engine-invariant checks |
+| `tools/test.js` | Crypto, determinism, engine invariants, math fingerprint, offline-cache coverage |
 
 > For entertainment only. Demo credits, no real-money gambling.
 

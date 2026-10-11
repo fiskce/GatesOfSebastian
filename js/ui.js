@@ -7,7 +7,7 @@
   const PF = window.ProvablyFair;
   const UI = G.UI = {};
   const $ = id => document.getElementById(id);
-  const PANELS = ['info', 'settings', 'fair', 'buy', 'credit', 'menu'];
+  const PANELS = ['info', 'settings', 'fair', 'buy', 'credit', 'menu', 'stats'];
   const revealed = {};   // server hash -> revealed seed
   let lastFocus = null;
 
@@ -21,6 +21,7 @@
     PANELS.forEach(p => { $('m-' + p).hidden = p !== name; });
     lastFocus = document.activeElement;
     if (name === 'fair') renderFair();
+    if (name === 'stats') G.Stats.renderPanel();
     if (name === 'buy') $('buyPrice').textContent = G.money(G.buyCost());
     if (name === 'credit') $('creditNow').textContent = G.money(S.credit);
     UI.sync();
@@ -40,6 +41,12 @@
     $('sfxToggle').checked = G.settings.sfx;
     $('turboToggle').checked = G.settings.turbo;
     $('motionToggle').checked = G.settings.reducedMotion;
+    $('dynMusicToggle').checked = G.settings.dynMusic;
+    $('qualitySelect').value = G.settings.quality;
+    $('qualitySelect').options[0].textContent = 'Auto (' + ['low', 'medium', 'high'][G.Q.level] + ')';
+    $('tiltToggle').checked = G.settings.tilt;
+    $('hapticsToggle').checked = G.settings.haptics;
+    $('hapticsRow').hidden = !navigator.vibrate;     // iOS has no vibration API
   };
 
   UI.init = () => {
@@ -56,6 +63,17 @@
     $('sfxToggle').addEventListener('change', e => { G.settings.sfx = e.target.checked; G.Game.applySettings(); G.save(); });
     $('turboToggle').addEventListener('change', e => { G.settings.turbo = e.target.checked; G.Game.applySettings(); G.save(); });
     $('motionToggle').addEventListener('change', e => { G.settings.reducedMotion = e.target.checked; G.save(); });
+    $('dynMusicToggle').addEventListener('change', e => { G.settings.dynMusic = e.target.checked; G.Game.applySettings(); G.save(); });
+    $('qualitySelect').addEventListener('change', e => { G.settings.quality = e.target.value; G.Game.applySettings(); G.save(); UI.sync(); });
+    $('tiltToggle').addEventListener('change', e => {
+      G.settings.tilt = e.target.checked; G.save();
+      if (e.target.checked) G.Game.enableDeviceTilt();        // a user gesture: iOS may ask for permission here
+    });
+    $('hapticsToggle').addEventListener('change', e => { G.settings.haptics = e.target.checked; G.save(); if (e.target.checked) G.haptic(30); });
+    $('resetStats').addEventListener('click', () => {
+      if (!confirm('Reset all stats and achievements?')) return;
+      G.Stats.reset(); G.Stats.renderPanel();
+    });
     $('resetCredit').addEventListener('click', () => { G.Game.resetCredit(); UI.closeAll(); });
     $('creditReset').addEventListener('click', () => { G.Game.resetCredit(); UI.closeAll(); });
 

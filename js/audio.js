@@ -128,6 +128,7 @@ const AudioEngine = (() => {
     },
     collect(p, g) { const t = ctx.currentTime; noise(t, 0.4, 0.12 * g, 400, 'bandpass', 5000); tone(300 * p, t + 0.05, 0.35, 'sine', 0.08 * g, 1200 * p); },
     slam(p, g) { const t = ctx.currentTime; tone(70, t, 0.7, 'sine', 0.38 * g, 40); noise(t, 0.4, 0.2 * g, 1600, 'lowpass', 200); bell(523.25 * p, t, 0.6, 0.14 * g); bell(784 * p, t + 0.05, 0.6, 0.1 * g); },
+    crackle(p, g) { const t = ctx.currentTime; for (let k = 0; k < 5; k++) noise(t + k * 0.045 + Math.random() * 0.02, 0.05, 0.09 * g, 3500 * p, 'highpass'); tone(2400 * p, t, 0.08, 'sawtooth', 0.02 * g, 900); },
     tick(p, g) { tone(1200 * p, ctx.currentTime, 0.035, 'triangle', 0.05 * g); },
     coin(p, g) { const t = ctx.currentTime; tone(1900 * p, t, 0.08, 'square', 0.04 * g); tone(2850 * p, t + 0.04, 0.14, 'sine', 0.05 * g); },
     whoosh(p, g) { noise(ctx.currentTime, 0.5, 0.14 * g, 300 * p, 'bandpass', 3000 * p); },
@@ -144,6 +145,7 @@ const AudioEngine = (() => {
       tone(65, t, 1.4, 'sine', 0.25 * g);
     },
     tierUp(p, g) { const t = ctx.currentTime; [0, 7, 12, 19].forEach((s, i) => bell(392 * p * semi(s), t + i * 0.04, 0.8, 0.14 * g)); tone(80, t, 0.6, 'sine', 0.25 * g, 50); },
+    achievement(p, g) { const t = ctx.currentTime; [0, 4, 7, 12, 16].forEach((s, i) => bell(659.25 * p * semi(s), t + i * 0.07, 0.5, 0.11 * g)); },
     denied(p, g) { const t = ctx.currentTime; tone(220, t, 0.12, 'square', 0.06 * g); tone(165, t + 0.1, 0.18, 'square', 0.06 * g); },
   };
 
@@ -230,5 +232,6 @@ const AudioEngine = (() => {
   Object.keys(SOUND_FILES).forEach(n => { if (SOUND_FILES[n]) load(n, SOUND_FILES[n]); });
 
   return { play, anticipation, startMusic, stopMusic, setVolume, setSfx, setMusicVolume, resume, duck, suspense, musicMode,
+    ctx, musicIn: musicVol,
     get musicOn() { return musicOn; } };
 })();

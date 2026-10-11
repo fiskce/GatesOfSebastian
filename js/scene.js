@@ -26,7 +26,9 @@
   let layers = [null, null], rays = null, cloudSprites = [[], []];
   let dirty = true, lastBuild = -1;
   let stars = [], clouds = [], braziers = [];
-  let lightningT = 4, skyFlash = 0;
+  let lightningT = 4, skyFlash = 0, suspenseK = 0, stormK = 0;
+  // free-spins storm intensity: grows with the total multiplier (x1 -> 0, x127+ -> 1)
+  Scene.storm = () => stormK;
 
   Scene.invalidate = () => { dirty = true; };
 
@@ -36,8 +38,8 @@
     rays = paintRays(Math.max(W, H) * 1.9);
     cloudSprites = [[0, 1, 2].map(v => paintCloud(v, MOODS[0].cloud)), [0, 1, 2].map(v => paintCloud(v, MOODS[1].cloud))];
     const r = mulberry(7);
-    stars = Array.from({ length: Math.round(W * H / 9000) }, () => ({ x: r() * W, y: Math.pow(r(), 1.6) * H * 0.6, s: 0.6 + r() * 1.8, p: r() * 7, f: 0.6 + r() * 2.2 }));
-    clouds = Array.from({ length: 9 }, (_, i) => ({ v: i % 3, x: r() * (W + 600) - 300, y: H * (0.12 + r() * 0.42), s: 0.5 + r() * 0.9, d: 0.3 + r() * 0.7, a: 0.25 + r() * 0.3 }));
+    stars = Array.from({ length: Math.round(W * H / 9000 * G.Q.fx) }, () => ({ x: r() * W, y: Math.pow(r(), 1.6) * H * 0.6, s: 0.6 + r() * 1.8, p: r() * 7, f: 0.6 + r() * 2.2 }));
+    clouds = Array.from({ length: Math.max(4, Math.round(9 * G.Q.fx)) }, (_, i) => ({ v: i % 3, x: r() * (W + 600) - 300, y: H * (0.12 + r() * 0.42), s: 0.5 + r() * 0.9, d: 0.3 + r() * 0.7, a: 0.25 + r() * 0.3 }));
     const cw = colW();
     braziers = hasColumns() ? [{ x: cw * 0.5 + W * 0.008, y: capY() }, { x: W - W * 0.008 - cw * 0.5, y: capY() }] : [];
     dirty = false; lastBuild = G.clock.real;
@@ -187,7 +189,8 @@
     const W = G.W, H = G.H;
     const x1 = G.rand(W * 0.1, W * 0.9), x2 = x1 + G.rand(-W * 0.15, W * 0.15);
     FX.bolt(x1, -10, x2, H * G.rand(0.3, 0.55), { layer: -1, width: strong ? 3 : 2, dur: 0.5, color: G.S.mood > 0.5 ? '#ffe7a8' : '#bfe4ff' });
-    skyFlash = Math.max(skyFlash, strong ? 0.5 : 0.28);
+    const a = (strong ? 0.5 : 0.28) * (G.settings.reducedMotion ? 0.3 : 1);
+    skyFlash = Math.max(skyFlash, FX.flashOk() ? a : Math.min(a, 0.12));
   };
 
   Scene.draw = (ctx, dt) => {
@@ -195,6 +198,9 @@
     if (dirty && (G.clock.real - lastBuild > 0.15 || !layers[0])) build();
     // mood cross-fade
     const mood = S.mood;
+    const stormTarget = S.inFS ? G.clamp(Math.log2(1 + S.persistent) / 7, 0, 1) : 0;
+    stormK += (stormTarget - stormK) * Math.min(1, dt * 1.5);
+    if (G.Music.storm) G.Music.storm(stormK);
     if (mood < 1) { ctx.globalAlpha = 1; ctx.drawImage(layers[0], 0, 0, W, H); }
     if (mood > 0) { ctx.globalAlpha = mood; ctx.drawImage(layers[1], 0, 0, W, H); ctx.globalAlpha = 1; }
 
@@ -210,7 +216,7 @@
       }
     }
     // light fan from above
-    if (rays) {
+    if (rays && G.Q.level > 0) {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.05 + mood * 0.05 + Math.sin(t * 0.6) * 0.012;
       const rs = rays.width;
@@ -222,7 +228,7 @@
     // drifting clouds, parallax with the pointer
     const px = (G.pointerN ? G.pointerN.x : 0), py = (G.pointerN ? G.pointerN.y : 0);
     for (const c of clouds) {
-      c.x += dt * 9 * c.d * (1 + mood);
+      c.x += dt * 9 * c.d * (1 + mood) * (1 + stormK * 2);
       if (c.x > W + 320) c.x = -360;
       const w = 360 * c.s * (W / 1400 + 0.4), h = 150 * c.s * (W / 1400 + 0.4);
       const ox = -px * 10 * c.d, oy = -py * 6 * c.d;
@@ -236,7 +242,7 @@
     if (lightningT <= 0) {
       Scene.lightning(mood > 0.5);
       if (mood > 0.5 && Math.random() < 0.35) setTimeout(() => Scene.lightning(false), 120);
-      lightningT = mood > 0.5 ? G.rand(1.6, 4.5) : G.rand(7, 15);
+      lightningT = mood > 0.5 ? G.rand(1.6, 4.5) * (1 - stormK * 0.8) : G.rand(7, 15);
     }
     if (skyFlash > 0) {
       ctx.globalCompositeOperation = 'lighter';
@@ -249,7 +255,7 @@
     // brazier fire + embers, rising motes
     for (const b of braziers) {
       const cw = colW();
-      const n = dt * 60 * 1.6;
+      const n = dt * 60 * 1.6 * G.Q.fx;
       for (let i = 0; i < n; i++) {
         FX.spawn({ kind: 'glow', layer: -1, x: b.x + G.rand(-cw * 0.32, cw * 0.32), y: b.y - cw * 0.12, vx: G.rand(-14, 14), vy: -G.rand(60, 150), drag: 0.8,
           max: G.rand(0.35, 0.75), size: G.rand(cw * 0.22, cw * 0.42), size1: 2, color: Math.random() < 0.3 ? '#ffd27a' : Math.random() < 0.5 ? '#ff7a1a' : '#ff4a12' });
@@ -262,11 +268,19 @@
       ctx.drawImage(FX.glowSprite('#ff8a2a'), b.x - gs, b.y - gs * 0.8, gs * 2, gs * 2);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     }
-    if (Math.random() < dt * (3 + mood * 6)) {
+    // the storm: a crimson cast over the sky and slanting rain as the multiplier climbs
+    if (stormK > 0.02) {
+      ctx.fillStyle = `rgba(110,8,30,${0.22 * stormK})`; ctx.fillRect(-W, -H, W * 3, H * 0.8 + H);
+      if (G.Q.level > 0) FX.rain(dt * 140 * stormK, 0.22 + stormK * 0.12);
+    }
+    if (Math.random() < dt * (3 + mood * 6 + stormK * 10)) {
       FX.spawn({ kind: 'ember', layer: -1, x: G.rand(0, W), y: H + 10, vx: G.rand(-12, 12), vy: -G.rand(25, 70), max: G.rand(6, 11), size: G.rand(1.5, 3.2),
         color: mood > 0.5 ? '#ffcf6a' : '#e8b8ff', drag: 0 });
     }
     FX.draw(ctx, -1);
     FX.drawBolts(ctx, -1);
+    // the world darkens while the reels tease a feature
+    suspenseK += ((S.suspense ? 1 : 0) - suspenseK) * Math.min(1, dt * 3);
+    if (suspenseK > 0.01) { ctx.fillStyle = `rgba(4,1,12,${0.38 * suspenseK})`; ctx.fillRect(-W, -H, W * 3, H * 3); }
   };
 })();

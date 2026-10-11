@@ -65,20 +65,22 @@
 
   // ---------------- particles ----------------
   const P = [];
-  const MAX = 1400;
+  const MAX = 1400;                 // scaled down by the adaptive quality level
   FX.count = () => P.length;
+  const budget = n => Math.max(1, Math.round(n * G.Q.fx));
   // kinds: glow, ember, shard, coin, star, ring, text, smoke
   FX.spawn = o => {
-    if (P.length >= MAX) P.shift();
+    const full = P.length >= MAX * G.Q.fx;      // at the budget: the new particle is simply not shown
     const p = Object.assign({ x: 0, y: 0, vx: 0, vy: 0, ax: 0, ay: 0, drag: 0, life: 0, max: 1, size: 6, size1: null,
       rot: 0, vr: 0, color: '#ffd84a', alpha: 1, add: true, layer: 0 }, o);
-    P.push(p);
+    if (!full) P.push(p);
     return p;
   };
   FX.clear = () => { P.length = 0; };
 
   FX.burst = (x, y, color, n, speed, opts) => {
     opts = opts || {};
+    n = budget(n);
     for (let k = 0; k < n; k++) {
       const a = Math.random() * Math.PI * 2, sp = speed * (0.35 + Math.random() * 0.75);
       FX.spawn({ kind: opts.kind || 'glow', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (opts.lift || 0), ay: opts.gravity || 0,
@@ -87,6 +89,7 @@
     }
   };
   FX.shards = (x, y, color, n, size) => {
+    n = budget(n);
     for (let k = 0; k < n; k++) {
       const a = Math.random() * Math.PI * 2, sp = G.rand(160, 520);
       FX.spawn({ kind: 'shard', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 140, ay: 900, drag: 0.8, max: G.rand(0.5, 0.85),
@@ -96,24 +99,46 @@
   FX.ring = (x, y, color, r0, r1, dur, width) => FX.spawn({ kind: 'ring', x, y, size: r0, size1: r1, max: dur || 0.5, color, lw: width || 4 });
   FX.star = (x, y, size, dur) => FX.spawn({ kind: 'star', x, y, size: 0, peak: size, max: dur || 0.6, rot: Math.random() * 3 });
   FX.coins = (x, y, n, spread, up) => {
+    n = budget(n);
     for (let k = 0; k < n; k++) {
       FX.spawn({ kind: 'coin', x: x + G.rand(-spread, spread), y, vx: G.rand(-260, 260), vy: -G.rand(up * 0.55, up), ay: 1300,
         max: G.rand(1.6, 2.6), size: G.rand(13, 22), rot: Math.random() * 7, vr: G.rand(6, 14), add: false, layer: 2 });
     }
   };
+  // a spark that arcs from (x,y) into a target and calls onArrive when it lands
+  FX.home = (x, y, tx, ty, color, dur, onArrive) => {
+    const mx = (x + tx) / 2 + G.rand(-1, 1) * Math.abs(tx - x) * 0.4, my = Math.min(y, ty) - G.rand(40, 160);
+    return FX.spawn({ kind: 'home', x, y, x0: x, y0: y, cx: mx, cy: my, tx, ty, max: dur, size: G.rand(5, 9), color, layer: 1, onArrive });
+  };
+  // slanted rain streaks for the free-spins storm (background layer)
+  FX.rain = (rate, wind) => {          // rate may be fractional: spawn that many on average
+    const r = rate * G.Q.fx, n = Math.floor(r) + (Math.random() < r % 1 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const vy = G.rand(900, 1300);
+      FX.spawn({ kind: 'rain', x: G.rand(-G.W * 0.2, G.W * 1.1), y: G.rand(-60, G.H * 0.3), vx: vy * wind, vy, max: G.rand(0.5, 1.1),
+        size: G.rand(0.8, 1.6), color: 'rgba(210,225,255,', alpha: G.rand(0.25, 0.55), layer: -1, add: false });
+    }
+  };
   FX.text = (x, y, text, size, color, opts) => FX.spawn(Object.assign({ kind: 'text', x, y, vy: -46, drag: 1.2, max: 1.3, size, text,
     color, add: false, layer: 1 }, opts || {}));
 
+  const drop = k => { P[k] = P[P.length - 1]; P.pop(); };
   FX.update = dt => {
     for (let k = P.length - 1; k >= 0; k--) {
       const p = P[k];
       p.life += dt;
-      if (p.life >= p.max) { P.splice(k, 1); continue; }
+      if (p.life >= p.max) { drop(k); if (p.onArrive) p.onArrive(p); continue; }
+      if (p.kind === 'home') {
+        const t = G.ease.inOutSine(p.life / p.max), u = 1 - t;
+        p.x = u * u * p.x0 + 2 * u * t * p.cx + t * t * p.tx;
+        p.y = u * u * p.y0 + 2 * u * t * p.cy + t * t * p.ty;
+        continue;
+      }
       if (p.drag) { const d = Math.exp(-p.drag * dt); p.vx *= d; p.vy *= d; }
       p.vx += p.ax * dt; p.vy += p.ay * dt;
       p.x += p.vx * dt; p.y += p.vy * dt;
       p.rot += p.vr * dt;
-      if (p.kind === 'coin' && p.y > G.H + 40) P.splice(k, 1);
+      if (p.kind === 'coin' && p.y > G.H + 40) drop(k);
     }
   };
 
@@ -126,6 +151,18 @@
           const s = p.size1 == null ? p.size : G.lerp(p.size, p.size1, t);
           ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a;
           ctx.drawImage(FX.glowSprite(p.color), p.x - s, p.y - s, s * 2, s * 2);
+          break;
+        }
+        case 'home': {
+          const s = p.size * (1 - t * 0.4);
+          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9;
+          ctx.drawImage(FX.glowSprite(p.color), p.x - s * 2, p.y - s * 2, s * 4, s * 4);
+          break;
+        }
+        case 'rain': {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.strokeStyle = p.color + (p.alpha * (1 - t)) + ')'; ctx.lineWidth = p.size;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.028, p.y - p.vy * 0.028); ctx.stroke();
           break;
         }
         case 'smoke': {
@@ -206,14 +243,15 @@
   FX.bolt = (x1, y1, x2, y2, opts) => {
     opts = opts || {};
     const rough = opts.rough || Math.hypot(x2 - x1, y2 - y1) * 0.09;
-    bolts.push({ x1, y1, x2, y2, rough, life: 0, max: opts.dur || 0.42, color: opts.color || '#9fe6ff', width: opts.width || 3.2,
-      path: boltPath(x1, y1, x2, y2, rough, 2), regen: 0, layer: opts.layer || 0 });
+    const depth = opts.depth != null ? opts.depth : G.Q.level >= 1 ? 2 : 1;
+    bolts.push({ x1, y1, x2, y2, rough, depth, life: 0, max: opts.dur || 0.42, color: opts.color || '#9fe6ff', width: opts.width || 3.2,
+      path: boltPath(x1, y1, x2, y2, rough, depth), regen: 0, layer: opts.layer || 0 });
   };
   FX.updateBolts = dt => {
     for (let k = bolts.length - 1; k >= 0; k--) {
       const b = bolts[k]; b.life += dt; b.regen -= dt;
       if (b.life >= b.max) { bolts.splice(k, 1); continue; }
-      if (b.regen <= 0) { b.path = boltPath(b.x1, b.y1, b.x2, b.y2, b.rough, 2); b.regen = 0.06; }
+      if (b.regen <= 0) { b.path = boltPath(b.x1, b.y1, b.x2, b.y2, b.rough, b.depth); b.regen = 0.06; }
     }
   };
   function strokePath(ctx, path, w) {
@@ -236,10 +274,29 @@
   };
 
   // ---------------- camera: shake, zoom punch, flash ----------------
-  const cam = FX.cam = { shake: 0, mag: 0, zoom: 0, zoomV: 0, flash: 0, flashColor: '255,255,255', ox: 0, oy: 0 };
+  // zoom = punch spring; push = slow push-in (anticipation) toward `focus`; tilt = pointer/device parallax
+  const cam = FX.cam = { shake: 0, mag: 0, zoom: 0, zoomV: 0, flash: 0, flashColor: '255,255,255', ox: 0, oy: 0,
+    push: 0, pushTarget: 0, focus: null, focusTo: null, tilt: { x: 0, y: 0 }, tiltTarget: { x: 0, y: 0 } };
+  FX.pushIn = (amount, focus) => {
+    if (G.settings.reducedMotion) return;
+    cam.pushTarget = amount; if (focus) cam.focusTo = focus;
+  };
+  FX.release = () => { cam.pushTarget = 0; };
   FX.shake = mag => { if (G.settings.reducedMotion) return; cam.shake = 1; cam.mag = Math.max(cam.mag * cam.shake, mag); };
   FX.punch = amt => { if (G.settings.reducedMotion) return; cam.zoomV += amt * 14; };
-  FX.flash = (a, rgb) => { if (G.settings.reducedMotion) a *= 0.3; cam.flash = Math.max(cam.flash, a); if (rgb) cam.flashColor = rgb; };
+  // photosensitivity guard (WCAG 2.3.1): at most 3 strong flashes in any second, the rest are muted
+  const flashTimes = [];
+  FX.flashOk = () => {
+    const now = G.clock.real;
+    while (flashTimes.length && now - flashTimes[0] > 1) flashTimes.shift();
+    if (flashTimes.length >= 3) return false;
+    flashTimes.push(now); return true;
+  };
+  FX.flash = (a, rgb) => {
+    if (G.settings.reducedMotion) a *= 0.3;
+    if (a > 0.15 && !FX.flashOk()) a = 0.12;
+    cam.flash = Math.max(cam.flash, a); if (rgb) cam.flashColor = rgb;
+  };
   FX.updateCam = dt => {
     cam.ox = cam.oy = 0;
     if (cam.shake > 0) {
@@ -251,5 +308,16 @@
     cam.zoomV += (-cam.zoom * 120 - cam.zoomV * 14) * dt;
     cam.zoom += cam.zoomV * dt;
     cam.flash = Math.max(0, cam.flash - dt * 3.2);
+    // ease the push-in and its focus point; snap back fast when released
+    cam.push += (cam.pushTarget - cam.push) * Math.min(1, dt * (cam.pushTarget > cam.push ? 1.6 : 5));
+    if (cam.focusTo) {
+      if (!cam.focus) cam.focus = { x: cam.focusTo.x, y: cam.focusTo.y };
+      cam.focus.x += (cam.focusTo.x - cam.focus.x) * Math.min(1, dt * 3);
+      cam.focus.y += (cam.focusTo.y - cam.focus.y) * Math.min(1, dt * 3);
+    }
+    if (cam.pushTarget === 0 && cam.push < 0.002) { cam.push = 0; cam.focus = cam.focusTo = null; }
+    const on = G.settings.tilt && !G.settings.reducedMotion;
+    cam.tilt.x += ((on ? cam.tiltTarget.x : 0) - cam.tilt.x) * Math.min(1, dt * 4);
+    cam.tilt.y += ((on ? cam.tiltTarget.y : 0) - cam.tilt.y) * Math.min(1, dt * 4);
   };
 })();

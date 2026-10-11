@@ -58,4 +58,30 @@ ok('rounds never exceed the max win', () => {
   const rng = E.makeRng(3);
   for (let i = 0; i < 3000; i++) assert.ok(E.playRound({ rng, buy: true }) <= E.MAX_WIN_X);
 });
+ok('payout math is unchanged (fingerprint of 5,000 spins, recorded from v7)', () => {
+  const h = crypto.createHash('sha256');
+  for (const mode of ['base', 'ante', 'fs']) for (let s = 1; s <= 1500; s++) {
+    const o = E.playSpin(E.makeRng(s), mode, { persistent: mode === 'fs' ? s % 7 : 0 });
+    h.update(mode + s + o.board.join('') + o.ev.winX.toFixed(6) + o.res.scatters + o.ev.persistentAfter);
+  }
+  for (let s = 1; s <= 500; s++) { const o = E.playSpin(E.makeRng(s), 'base', { buy: true }); h.update('buy' + s + o.board.join('') + o.ev.winX.toFixed(6)); }
+  assert.strictEqual(h.digest('hex'), '117e516f6c8b6432127463ab2a8ef10cd93a2c5259e3e20407f5f6c59ea5e653');
+});
+ok('every asset the game loads exists and is precached by the service worker', () => {
+  const fs = require('fs'), root = path.join(__dirname, '..');
+  const read = f => fs.readFileSync(path.join(root, f), 'utf8');
+  const sw = read('sw.js');
+  const core = [...sw.match(/const CORE = \[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
+  for (const f of core) if (f !== './') assert.ok(fs.existsSync(path.join(root, f)), 'precached file missing on disk: ' + f);
+  const html = read('index.html');
+  const refs = [...html.matchAll(/(?:src|href)="([^"#:]+)"/g)].map(m => m[1]);
+  const css = [...read('css/style.css').matchAll(/url\(\.\.\/([^)]+)\)/g)].map(m => m[1]);
+  const symbols = [...read('js/board.js').matchAll(/'(assets\/[^']+\.png)'/g)].map(m => m[1]);
+  const sounds = [...read('js/audio.js').matchAll(/'(sounds\/[^']+)'/g)].map(m => m[1]).filter(f => !f.endsWith('music.ogg'));
+  const manifest = JSON.parse(read('manifest.json')).icons.map(i => i.src);
+  for (const f of [...refs, ...css, ...symbols, ...sounds, ...manifest, 'manifest.json']) {
+    assert.ok(fs.existsSync(path.join(root, f)), 'referenced file missing: ' + f);
+    assert.ok(core.includes(f), 'not precached by sw.js: ' + f);
+  }
+});
 console.log(`\n${n} checks passed`);

@@ -55,7 +55,7 @@
     const dur = 2.4 + top * 1.6, hold = (autoMs || 2600) / 1000;
     const it = { block: true, t: 0, shown: 0, tier: 0, tickT: 0, phase: 'count', closeT: 0, tierT: 0 };
     AudioEngine.duck(0.2, dur + hold); AudioEngine.play('bigwin');
-    S.sebCheerT = G.clock.real;
+    G.Seb.cut = it; G.Seb.cheer(1); G.Seb.say('big');
     const finish = () => {
       it.shown = amount; it.tier = top; it.phase = 'hold'; it.closeT = it.t;
       AudioEngine.play('slam'); FX.shake(14); FX.flash(0.7, '255,240,190');
@@ -67,7 +67,8 @@
         it.shown = amount * (1 - Math.pow(1 - p, 1.7));
         const reached = Math.max(0, O.tierFor(it.shown / bet));
         if (reached > it.tier) {
-          it.tier = reached; it.tierT = it.t; S.sebCheerT = G.clock.real;
+          it.tier = reached; it.tierT = it.t; G.Seb.cheer(1 + reached * 0.4); G.Seb.say(reached >= 2 ? 'epic' : 'mega');
+          G.haptic([50, 40, 50]);
           AudioEngine.play('tierUp', { rate: 1 + reached * 0.06 }); FX.flash(0.6, '255,230,160'); FX.shake(10 + reached * 4); FX.punch(0.03);
         }
         it.tickT -= dt;
@@ -75,7 +76,7 @@
         if (Math.random() < dt * (18 + it.tier * 10)) FX.coins(G.W / 2 + G.rand(-G.W * 0.2, G.W * 0.2), G.H + 20, 1, 40, G.H * 1.25);
         if (p >= 1) finish();
       } else if (it.phase === 'hold' && it.t - it.closeT > hold) { it.phase = 'out'; it.closeT = it.t; }
-      else if (it.phase === 'out' && it.t - it.closeT > 0.35) { it.dead = true; res(); }
+      else if (it.phase === 'out' && it.t - it.closeT > 0.35) { it.dead = true; G.Seb.cut = null; res(); }
     };
     it.skip = () => {
       if (it.phase === 'count') finish();
@@ -87,6 +88,9 @@
       ctx.save(); ctx.globalAlpha = G.clamp(a, 0, 1);
       backdrop(ctx, 1);
       drawRays(ctx, cx, cy, m * 1.5 * (1 + it.tier * 0.12), 0.35 + it.tier * 0.08);
+      // Sebastian slides in to celebrate (he would be hidden behind the backdrop otherwise)
+      const slide = it.phase === 'out' ? 1 - (it.t - it.closeT) / 0.35 : it.t / 0.45;
+      G.Seb.drawCutIn(ctx, G.clamp(a, 0, 1), slide);
       const tb = Math.max(0, 1 - (it.t - it.tierT) / 0.45);
       ctx.save(); ctx.translate(cx, cy - m * 0.13); const sc = (1 + tb * 0.35) * pulse(5); ctx.scale(sc, sc);
       G.goldText(ctx, TIERS[it.tier][1], 0, 0, m * 0.12, { maxW: G.W * 0.9, glow: 'rgba(255,140,30,.9)' });
@@ -99,6 +103,7 @@
       ctx.restore();
       G.text(ctx, G.xfmt(Math.round(it.shown / bet * 100) / 100) + ' BET', cx, cy + m * 0.15, m * 0.032, '#f6e3ff', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
       if (it.phase !== 'count') G.text(ctx, 'TAP TO CONTINUE', cx, cy + m * 0.26, m * 0.026, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
+      G.Seb.drawCutBubble(ctx);
       ctx.restore();
     };
     O.items.push(it);
@@ -144,7 +149,7 @@
   O.fsOutro = (total, spins, bet, autoMs) => new Promise(res => {
     const it = { block: true, t: 0, phase: 'in', closeT: 0, shown: 0 };
     AudioEngine.duck(0.25, 4); AudioEngine.play(total / bet >= 15 ? 'bigwin' : 'win');
-    S.sebCheerT = G.clock.real;
+    if (total / bet >= 15) G.Seb.cheer(1.2);
     const countDur = total > 0 ? 1.8 : 0.01;
     let ticked = 0;
     const close = () => { if (it.phase === 'in') { it.phase = 'out'; it.closeT = it.t; } };
@@ -192,6 +197,22 @@
     };
     O.items.push(it);
   });
+
+  // ---------------- milestone: non-blocking headline over the board ----------------
+  O.milestone = (big, sub) => {
+    const it = { t: 0 }, dur = 1.8;
+    it.update = () => { if (it.t >= dur) it.dead = true; };
+    it.draw = ctx => {
+      const r = G.L.reel, a = it.t < 0.15 ? it.t / 0.15 : it.t > dur - 0.35 ? (dur - it.t) / 0.35 : 1;
+      const k = G.ease.outElastic(G.clamp(it.t / 0.6, 0, 1));
+      ctx.save(); ctx.globalAlpha = G.clamp(a, 0, 1);
+      ctx.translate(r.x + r.w / 2, r.y + r.h * 0.3); ctx.scale(k, k);
+      G.goldText(ctx, big, 0, 0, r.h * 0.13, { maxW: r.w * 0.9, glow: 'rgba(255,60,30,.9)', colors: ['#ffffff', '#ffe0a0', '#ff9a3a', '#c8300e', '#ffd36b'] });
+      if (sub) G.text(ctx, sub, 0, r.h * 0.09, r.h * 0.04, '#ffffff', { weight: 800, maxW: r.w * 0.9, shadow: 'rgba(0,0,0,.9)', display: true });
+      ctx.restore();
+    };
+    O.items.push(it);
+  };
 
   // ---------------- win pop over the board (wins under the big-win line) ----------------
   O.winPop = (amount, ms) => new Promise(res => {

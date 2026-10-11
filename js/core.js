@@ -8,7 +8,7 @@
 window.GOS = (() => {
   'use strict';
   const E = window.Engine;
-  const G = { E };
+  const G = { E, Music: window.GOSMusic };
 
   // ---------------- canvas ----------------
   G.canvas = document.getElementById('game');
@@ -17,7 +17,27 @@ window.GOS = (() => {
 
   // ---------------- clock ----------------
   // real: seconds since boot (ambient visuals). game: scaled, pausable (gameplay).
-  G.clock = { real: 0, game: 0, scale: 1, paused: false };
+  // scale = pace (1 normal / 2 turbo / 3.5 slam) × slow (slow-motion dips).
+  G.clock = { real: 0, game: 0, scale: 1, pace: 1, slow: 1, paused: false };
+  let slowmo = null;
+  G.setPace = pace => { G.clock.pace = pace; G.clock.scale = pace * G.clock.slow; };
+  // dip game time to `factor` almost instantly, then ease back to normal over realMs
+  G.slowmo = (factor, realMs) => {
+    if (G.clock.pace > 2) return;                       // slam-stop wins
+    if (G.settings.reducedMotion) factor = Math.max(factor, 0.6);
+    if (G.settings.turbo || G.S.auto > 0) { factor = Math.max(factor, 0.55); realMs *= 0.5; }
+    slowmo = { factor: Math.min(factor, G.clock.slow), t: 0, dur: realMs / 1000 };
+  };
+  G.cancelSlowmo = () => { slowmo = null; G.clock.slow = 1; G.clock.scale = G.clock.pace; };
+  G.updateClock = dtReal => {
+    if (slowmo) {
+      slowmo.t += dtReal;
+      const p = slowmo.t / slowmo.dur;
+      G.clock.slow = p < 0.08 ? G.lerp(1, slowmo.factor, p / 0.08) : G.lerp(slowmo.factor, 1, Math.pow(G.clamp((p - 0.08) / 0.92, 0, 1), 2));
+      if (p >= 1) { slowmo = null; G.clock.slow = 1; }
+    }
+    G.clock.scale = G.clock.pace * G.clock.slow;
+  };
   const timers = [];
   G.wait = ms => new Promise(res => timers.push({ at: G.clock.game + ms / 1000, res }));
   G.tickTimers = () => {
@@ -89,16 +109,19 @@ window.GOS = (() => {
     message: '', messageT: 0,
     history: [],
   };
-  G.settings = { volume: 0.7, music: true, sfx: true, turbo: false, reducedMotion: false, introSeen: false };
+  const touch = typeof navigator !== 'undefined' && (navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
+  G.settings = { volume: 0.7, music: true, sfx: true, turbo: false, reducedMotion: false, introSeen: false,
+    quality: 'auto', tilt: true, haptics: touch, dynMusic: true };
   G.baseBet = () => G.BET_STEPS[G.S.betIndex];
   G.spinCost = () => G.baseBet() * (G.S.ante ? E.ANTE_COST : 1);
   G.buyCost = () => G.baseBet() * E.BUY_COST_X;
 
   // ---------------- persistence (best effort) ----------------
-  const KEY = 'gos7';
+  // v8 has its own key; the first visit carries the v7 balance and settings over.
+  const KEY = 'gos8', OLD_KEY = 'gos7';
   G.load = () => {
     try {
-      const d = JSON.parse(localStorage.getItem(KEY) || 'null');
+      const d = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY) || 'null');
       if (!d) return;
       if (Number.isFinite(d.credit)) G.S.credit = d.credit;
       if (Number.isInteger(d.betIndex)) G.S.betIndex = G.clamp(d.betIndex, 0, G.BET_STEPS.length - 1);
@@ -111,6 +134,46 @@ window.GOS = (() => {
     catch (e) { /* storage unavailable */ }
   };
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) G.settings.reducedMotion = true;
+
+  // ---------------- haptics ----------------
+  G.haptic = pattern => {
+    if (!G.settings.haptics || !navigator.vibrate || !G.S.started) return;
+    try { navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
+  };
+
+  // ---------------- adaptive quality ----------------
+  // level 2 = everything, 1 = trimmed, 0 = lean (weak phones / CPU-only canvas).
+  // In 'auto' the frame time is sampled and the level steps down quickly when
+  // frames run long, and back up slowly once they are comfortably fast.
+  const Q = G.Q = { level: 2, fx: 1, dprCap: 2, onChange: null };
+  const LEVELS = [{ fx: 0.4, dprCap: 1 }, { fx: 0.7, dprCap: 1.5 }, { fx: 1, dprCap: 2 }];
+  const frameTimes = [];
+  const drops = [0, 0, 0];          // a level dropped from twice is not tried again (stops see-sawing)
+  let slowFor = 0, fastFor = 0, settleFor = 2;
+  Q.set = level => {
+    level = G.clamp(level, 0, 2);
+    const changed = level !== Q.level;
+    Q.level = level; Q.fx = LEVELS[level].fx; Q.dprCap = LEVELS[level].dprCap;
+    slowFor = fastFor = 0; settleFor = 2; frameTimes.length = 0;
+    if (changed && Q.onChange) Q.onChange(level);
+  };
+  Q.applySetting = () => {
+    const m = G.settings.quality;
+    Q.set(m === 'high' ? 2 : m === 'medium' ? 1 : m === 'low' ? 0 : Q.level);
+  };
+  Q.sample = dtReal => {
+    // only judge the game itself: not while hidden, before PLAY or under a panel (their CSS blur is costly)
+    if (G.settings.quality !== 'auto' || G.clock.paused || document.hidden || !G.S.started || (G.UI && G.UI.isOpen())) return;
+    if (settleFor > 0) { settleFor -= dtReal; return; }      // ignore spikes right after boot/resize/rebuilds
+    frameTimes.push(dtReal * 1000); if (frameTimes.length > 60) frameTimes.shift();
+    if (frameTimes.length < 12) return;                    // ~0.2 s at 60 fps, ~3 s on a struggling device
+    const med = frameTimes.slice().sort((a, b) => a - b)[frameTimes.length >> 1];
+    // a healthy 60 Hz frame is 16.7 ms, 120 Hz is 8.3 ms
+    if (med > 24) { slowFor += dtReal; fastFor = 0; } else if (med < 19) { fastFor += dtReal; slowFor = 0; } else { slowFor = fastFor = 0; }
+    if (slowFor > 2 && Q.level > 0) { drops[Q.level]++; Q.set(Q.level - 1); }
+    else if (fastFor > 10 && Q.level < 2 && drops[Q.level + 1] < 2) Q.set(Q.level + 1);
+  };
+  Q.settle = () => { settleFor = 2; frameTimes.length = 0; };
 
   // ---------------- layout ----------------
   // Recomputed on resize only. Board positions are stored in row units, so
@@ -222,7 +285,8 @@ window.GOS = (() => {
   G.cellCenter = i => ({ x: G.cellX(i % COLS) + G.L.cell / 2, y: G.cellY(Math.floor(i / COLS)) + G.L.cell / 2 });
 
   G.resize = () => {
-    G.DPR = Math.min(window.devicePixelRatio || 1, 2);
+    G.DPR = Math.min(window.devicePixelRatio || 1, G.Q.dprCap);
+    G.Q.settle();
     G.W = G.canvas.clientWidth; G.H = G.canvas.clientHeight;
     G.canvas.width = Math.round(G.W * G.DPR); G.canvas.height = Math.round(G.H * G.DPR);
     G.ctx.setTransform(G.DPR, 0, 0, G.DPR, 0, 0);
