@@ -144,12 +144,13 @@
    * white/black tile with plain source-over: cheaper on large dark areas. */
   M.texture = (ctx, kind, amount, blend, self, box) => {
     const c = ctx.canvas, keep = self ? copy(c) : null, s = M.scale(ctx);
+    const m = box && ctx.getTransform ? ctx.getTransform() : { e: 0, f: 0 };      // a padded bake translates first: keep its offset
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
     const fast = blend === 'fast';
     ctx.globalCompositeOperation = fast ? 'source-over' : blend || 'overlay';
     ctx.globalAlpha = Math.min(1, fast ? amount * 1.5 : amount / 0.16);
     ctx.fillStyle = M.pattern(ctx, fast ? kind + '±' : kind);
-    if (box) ctx.fillRect(Math.floor(box[0] * s), Math.floor(box[1] * s), Math.ceil(box[2] * s) + 2, Math.ceil(box[3] * s) + 2);
+    if (box) ctx.fillRect(Math.floor(m.e + box[0] * s), Math.floor(m.f + box[1] * s), Math.ceil(box[2] * s) + 2, Math.ceil(box[3] * s) + 2);
     else ctx.fillRect(0, 0, c.width, c.height);
     if (keep) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'destination-in'; ctx.drawImage(keep, 0, 0); }
     ctx.restore();

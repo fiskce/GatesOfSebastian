@@ -166,7 +166,7 @@
     const bet = G.baseBet();
     S.slam = false; setPace();
     S.tumbleWin = 0; S.tumbleShown = 0; S.spinMult = 0; S.cascade = 0;
-    S.winBase = S.inFS ? S.fsTotal : 0;          // WIN counts this spin on top of what the feature has banked
+    S.winBase = S.roundWin;          // WIN counts this spin on top of what the round has banked (trigger spin included)
     if (S.inFS) { S.fsLeft--; S.fsPlayed++; }
     else S.winDisplay = 0;
     const mode = S.inFS ? 'fs' : (S.ante && !opts.buy ? 'ante' : 'base');
@@ -209,8 +209,8 @@
       await celebrate(spinWin, bet);
     }
     S.tumbleShown = 0; S.countTo = null;
-    // WIN holds this spin's win from the moment it is banked (not only after the scatters and banners)
-    S.winDisplay = S.inFS ? S.fsTotal : spinWin;
+    // WIN holds the round's total from the moment a win is banked (not only after the scatters and banners)
+    S.winDisplay = S.roundWin;
 
     G.Stats.record('spin', { free: mode === 'fs', win: spinWin, winX: spinWin / bet, cascades: S.cascade, mult: applies ? out.ev.mult : 0,
       nearMiss: mode !== 'fs' && !opts.buy && out.res.scatters === SCATTERS_FS - 1, maxed });
@@ -450,7 +450,7 @@
       FX.coins(r.x + r.w / 2, r.y + r.h * 0.65, Math.min(30, 4 + Math.round(x * 2)), r.w * 0.2, G.H * 0.7);
       if (x >= 5) AudioEngine.play('win.coins');
       const pop = O.winPop(amount, 1100);
-      S.winDisplay = S.inFS ? S.fsTotal : amount;
+      S.winDisplay = S.roundWin;
       await G.wait(x >= 5 ? 900 : 550);
       if (S.auto > 0 && !S.inFS) await pop;
     }
@@ -830,7 +830,7 @@
   });
 
   // ---------------- render loop ----------------
-  G.onLayout = () => { Scene.invalidate(); B.invalidate(); H.invalidate(); };
+  G.onLayout = () => { Scene.invalidate(); B.invalidate(); H.invalidate(); O.invalidate(); };
   window.addEventListener('resize', G.resize);
   G.Q.onChange = level => {            // new DPR cap, star/cloud counts, frame caches
     G.resize();

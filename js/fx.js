@@ -142,6 +142,9 @@
     }
   };
 
+  // move live particles to another layer (an overlay that drew them is closing)
+  FX.relayer = (from, to) => { for (const p of P) if ((p.layer || 0) === from) p.layer = to; };
+
   FX.draw = (ctx, layer) => {
     for (const p of P) {
       if ((p.layer || 0) !== layer) continue;

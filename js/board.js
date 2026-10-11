@@ -256,7 +256,15 @@
   const anyFalling = () => B.cells.some(c => c.falling) || B.exiting.length > 0;
   B.settled = () => new Promise(res => { if (!anyFalling()) res(); else settleRes = res; });
 
+  /* The drop physics runs in steps of at most 1/120 s of game time. With longer
+   * steps (slam-stop's 3.5x pace at 60 Hz, or a slow device) a landed cell's
+   * smallest bounce stays above STOPV, so it would bounce forever and the round
+   * would never settle. */
   B.update = dt => {
+    const n = Math.max(1, Math.ceil(dt * 120 - 1e-9));
+    for (let k = 0; k < n; k++) step(dt / n);
+  };
+  function step(dt) {
     for (let i = 0; i < CELLS; i++) {
       const c = B.cells[i];
       c.squash = Math.max(0, c.squash - dt * 6);
@@ -289,7 +297,7 @@
     if (settleRes && !anyFalling()) { const r = settleRes; settleRes = null; r(); }
     for (let c = 0; c < COLS; c++) if (lintGlint[c] > 0) lintGlint[c] = Math.max(0, lintGlint[c] - dt / 0.14);
     B.highlightT += dt;
-  };
+  }
 
   /* New spin: old symbols fall out, the new board drops in column by column.
    * plan.colDelay[c] = seconds before column c drops; plan.antic = columns that

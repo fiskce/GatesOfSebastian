@@ -423,14 +423,15 @@
   }
   // WIN: the live tumble count during a spin, the last win (or the feature's total) after it
   function winText() {
-    // in free spins a spin counts on top of what the feature has already banked, so WIN never runs backwards
-    const base = S.inFS ? S.winBase || 0 : 0, c = G.Overlay.counting();
-    if (c && c.big) return G.countMoney(base + c.shown, base + c.to);
+    // WIN is the round's total: a spin counts on top of what the round has already banked, so it never runs backwards
+    const base = S.winBase || 0, c = G.Overlay.counting();
+    // a big win re-counts from zero on its own plate; the readout keeps what the board has already shown
+    if (c && c.big) return G.countMoney(base + Math.min(c.to, Math.max(c.shown, S.tumbleShown || 0)), base + c.to);
     if (S.busy && S.tumbleShown > 0) return G.countMoney(base + S.tumbleShown, base + countTo());
-    if (S.inFS && S.fsTotal > 0) return G.money(S.fsTotal);
+    if (S.inFS && S.roundWin > 0) return G.money(S.roundWin);
     return S.winDisplay > 0 ? G.money(S.winDisplay) : G.money(0);
   }
-  const winLive = () => (S.busy && S.tumbleShown > 0) || S.winDisplay > 0 || (S.inFS && S.fsTotal > 0);
+  const winLive = () => (S.busy && S.tumbleShown > 0) || S.winDisplay > 0 || (S.inFS && S.roundWin > 0);
   // the toast lane: messages and hints only, never money
   function toastText() {
     const age = G.clock.real - S.messageT;
@@ -601,7 +602,7 @@
 
   function drawBottomLandscape(ctx, bb) {
     const W = G.W, cy = bb.y + bb.h / 2, pad = G.L.pad * 1.4;
-    const isz = G.clamp(bb.h * 0.3, 16, 28), ig = Math.max(isz * 1.55, G.coarse ? 44 : 0);
+    const isz = G.clamp(bb.h * 0.3, 16, 28), ig = Math.max(isz * 1.55, G.coarse ? 46 : 0);      // a touch target apart, with a hair to spare
     let x = pad + isz * 0.6;
     // narrow bars keep two icons and put the rest in the menu, as phones do
     const narrow = W < 760;
@@ -697,12 +698,12 @@
   function drawBottomCompact(ctx, bb) {
     const W = G.W, cy = bb.y + bb.h / 2, pad = 6;
     const isz = G.clamp(bb.h * 0.3, 12, 18);
-    // on a touch screen wide enough for it, neighbours sit a full touch target apart
-    const roomy = G.coarse && W >= 560, step = Math.max(isz * 1.6, roomy ? 36 : 0);
-    iconButton(ctx, 'menu', 'menu', pad + isz * 0.7, cy, isz, () => G.UI.open('menu'), { label: 'Menu' });
-    iconButton(ctx, 'sound', G.settings.sfx || G.settings.music ? 'sound' : 'mute', pad + isz * 0.7 + step, cy, isz, () => G.Game.toggleSound(), { label: 'Sound' });
-    const R = G.clamp(bb.h * 0.42, 15, 24), r = R * 0.55, g = roomy ? Math.max(5, 36 - 2 * r) : 5;
-    let rx = W - pad;
+    // on a touch screen neighbours sit a full touch target apart (36 px here), even at 400 px wide
+    const roomy = G.coarse, step = Math.max(isz * 1.6, roomy ? 37 : 0), x0 = Math.max(pad + isz * 0.7, roomy ? 19 : 0);
+    iconButton(ctx, 'menu', 'menu', x0, cy, isz, () => G.UI.open('menu'), { label: 'Menu' });
+    iconButton(ctx, 'sound', G.settings.sfx || G.settings.music ? 'sound' : 'mute', x0 + step, cy, isz, () => G.Game.toggleSound(), { label: 'Sound' });
+    const R = G.clamp(bb.h * 0.42, 15, 24), r = R * 0.55, g = roomy ? Math.max(5, 37 - 2 * r) : 5;
+    let rx = W - (roomy ? Math.max(pad, 19 - r) : pad);
     const autoX = G.allow('auto') ? (rx -= r, rx) : null; if (autoX) rx -= r + g;
     const plusX = rx - r; rx = plusX - r - g;
     const spinX = rx - R; rx = spinX - R - g;
@@ -713,16 +714,19 @@
     if (autoX) iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, cy, r * 1.1, () => G.Game.autoPressed(), autoOpts());
     spinButton(ctx, spinX, cy, R);
     // BALANCE and BET on two lines, then a fresh message, WIN or the idle hint in what is left
-    const left = pad + isz * 0.7 + step + isz * 1.1, fsz = G.clamp(bb.h * 0.2, 8, 12), colW = Math.min(118, (rx - left) * 0.55);
+    const left = x0 + step + Math.max(isz * 1.1, roomy ? 19 : 0), fsz = G.clamp(bb.h * 0.2, 8, 12), colW = Math.min(118, (rx - left) * 0.55);
     const vy1 = cy - fsz * 0.65, vy2 = cy + fsz * 0.75;
     if (G.allow('balance')) G.text(ctx, T('balance') + ' ' + balance(), left, vy1, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true, min: 8 });
     const bp = betPress(), byy = G.allow('balance') ? vy2 : cy;
     if (bp) G.button(bp.id, left, byy - fsz * 0.8, colW, fsz * 1.6, bp.fn, { disabled: bp.disabled, label: bp.label, reason: bp.reason });
     G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), left, byy, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true, min: 8 });
     const mx = left + colW + 6, laneW = rx - mx - 6;
+    const fresh = freshMessage();
+    let fits = false;
+    if (fresh && laneW > 50) { ctx.font = G.font(8, 800, true); fits = ctx.measureText(fresh).width <= laneW; }
+    if (fresh && !fits) floatToast(ctx, fresh);          // too long for the lane: under the board, at 11 px
     if (laneW > 50) {
-      const fresh = freshMessage();
-      if (fresh) G.text(ctx, fresh, (mx + rx) / 2, cy, fsz * 0.95, TXT, { weight: 800, maxW: laneW, display: true, min: 8 });
+      if (fresh && fits) G.text(ctx, fresh, (mx + rx) / 2, cy, fsz * 0.95, TXT, { weight: 800, maxW: laneW, display: true, min: 8 });
       else if (winLive()) G.text(ctx, T('win') + ' ' + winText(), (mx + rx) / 2, cy, fsz * 1.1, '#ffd36b', { weight: 800, maxW: laneW, tabular: true, min: 8 });
       else {
         const m = toastText();          // the idle hint only when it fits at the 8 px floor

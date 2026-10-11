@@ -41,6 +41,8 @@
    * bolt at each end: the game's own ornament (the lintel keeps the Greek key). */
   const ENAMEL = [['#8f55e6', '#3a1478'], ['#3f86e8', '#0f2c6e'], ['#b02a40', '#3A0710'], ['#22a273', '#06352a'], ['#6a5020', '#120a02']];
   const plateCache = new Map();
+  // a new layout needs new plates; the old sizes are never drawn again
+  O.invalidate = () => plateCache.clear();
   function cartouche(w, h, n) {
     const p = new Path2D();
     p.moveTo(n, 0); p.lineTo(w - n, 0); p.arc(w, 0, n, Math.PI, Math.PI * 0.5, true); p.lineTo(w, h - n); p.arc(w, h, n, Math.PI * 1.5, Math.PI, true);
@@ -55,7 +57,8 @@
     const M = G.Mat, pad = Math.ceil(h * 0.3), o = G.offscreen(w + pad * 2, h + pad * 2), x = o.x;
     x.translate(pad, pad);
     const col = kind === 'fs' ? ['#c8681e', '#3a1404'] : ENAMEL[kind], n = Math.min(h * 0.3, w * 0.08), p = cartouche(w, h, n);
-    M.shadowOnly(x, k => k.fill(p), h * 0.25, 0, h * 0.08, 'rgba(0,0,0,.6)');
+    // the wide drop shadow is all low frequencies: bake it at a quarter of the resolution
+    M.lowres(x, [-pad, -pad, w + pad * 2, h + pad * 2], 0.25, k => M.shadowOnly(k, kk => kk.fill(p), h * 0.25, 0, h * 0.08, 'rgba(0,0,0,.6)'));
     const g = x.createRadialGradient(w * 0.35, h * 0.15, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.62);
     g.addColorStop(0, col[0]); g.addColorStop(1, col[1]);
     x.fillStyle = g; x.fill(p);
@@ -154,7 +157,8 @@
       else if (it.phase === 'out' && it.t - it.closeT > 0.35) { it.dead = true; G.Seb.cut = null; res(); }
     };
     // leaving gives the music back straight away, however early the tap came
-    const out = () => { it.phase = 'out'; it.closeT = it.t; AudioEngine.unduck(0.5); };
+    // coins still in the air finish their fall over the board instead of vanishing with the overlay
+    const out = () => { it.phase = 'out'; it.closeT = it.t; AudioEngine.unduck(0.5); FX.relayer(3, 2); };
     it.skip = () => {
       if (it.phase === 'count') finish();
       else if (it.phase === 'hold' && it.t - it.closeT > 0.25) out();
