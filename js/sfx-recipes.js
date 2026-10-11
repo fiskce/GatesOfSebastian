@@ -24,12 +24,22 @@
  * Exposes window.GOS_SFX (module.exports in Node):
  *   SR                      48000
  *   NOTES                   {'D6': Hz, ...} for G A Bb C D F, octaves 0–8
- *   RECIPES[name]           {variants, bus: 'ui'|'world'|'fs', stereo, notes, target:{peakDb}|{lufs}, marks?, render(seed, variant)}
+ *   RECIPES[name]           {variants, bus: 'ui'|'world'|'fs', stereo, notes, target, marks?, render(seed, variant)}
+ *                           target: {peakDb} | {peakDb, punch: true} (loudness-levelled family, see PUNCH)
+ *                           | {lufs} | {sustainDb, win} (the horn call)
+ *   PUNCH[name]             calibrated short-window loudness per family (a number, or one per tier)
  *   list()                  [[name, variant], ...] in sheet order
- *   render(name, variant)   {L, R} Float32Array at 48 kHz, peak −1 dBFS (+ notesUsed)
+ *   render(name, variant)   {L, R} Float32Array at 48 kHz, peak −1 dBFS (+ variant, notesUsed, endDb)
+ *   job(name, variant)      the same render in small steps for idle time: step() until it returns
+ *                           true, then job.out (the render) and job.gain (its playback gain)
+ *   renderAsync(name, v, ms) job() on a timer (ms per slice, default 6): Promise of the finished job
  *   seedOf(name, variant)   the seed render() uses
  *   loudness(L, R)          BS.1770 integrated LUFS (the same 400 ms/100 ms gating as ffmpeg ebur128)
- *   gainFor(name, out)      linear playback gain that puts a render on its target (for the runtime fallback)
+ *   punch(L, R)             short-window loudness: the loudest 100 ms, K-weighted (LUFS)
+ *   sustain(L, R, a, b)     RMS dBFS over [a, b] s
+ *   targetOf(name, variant) {kind: 'peak'|'punch'|'lufs'|'sustain', value, ...} the level a slot plays at
+ *   gainFor(name, out, v)   linear playback gain that puts a render on its target (the runtime fallback;
+ *                           tools/render-sfx.js levels the sheets by the same rules)
  */
 (function (root, factory) {
   const SFX = factory();
@@ -155,7 +165,7 @@
   // TPT state-variable filter (Zavalishin / Simper). fc: number or function(i) -> Hz.
   // type: lp | hp | bp (unity gain at centre) | notch
   function svf(x, type, fc, Q) {
-    const k = 1 / (Q || 0.7071), dyn = typeof fc === 'function';
+    const k = 1 / (Q || 0.7071), dyn = typeof fc === 'function', t = type === 'lp' ? 0 : type === 'bp' ? 1 : type === 'hp' ? 2 : 3;
     let ic1 = 0, ic2 = 0, a1 = 0, a2 = 0, a3 = 0;
     const coef = f => {
       const g = tanPi(Math.min(0.49, Math.max(1, f) / SR));
@@ -166,14 +176,24 @@
       if (dyn && (i & 15) === 0) coef(fc(i));
       const v0 = x[i], v3 = v0 - ic2, v1 = a1 * ic1 + a2 * v3, v2 = ic2 + a2 * ic1 + a3 * v3;
       ic1 = 2 * v1 - ic1; ic2 = 2 * v2 - ic2;
-      x[i] = type === 'lp' ? v2 : type === 'bp' ? v1 * k : type === 'hp' ? v0 - k * v1 - v2 : v0 - k * v1;
+      x[i] = t === 0 ? v2 : t === 1 ? v1 * k : t === 2 ? v0 - k * v1 - v2 : v0 - k * v1;
     }
     return x;
   }
-  // exponential sweep helper for svf/osc: f0 -> f1 over sec, then hold
+  // exponential sweep helper for svf/osc: f0 -> f1 over sec, then hold. An
+  // oscillator asks for every sample in turn: those steps are one multiply
+  // (the same calls in the same order everywhere, so still bit-identical);
+  // anything else (a filter's every 16th sample) gets the exact value
   function sweep(f0, f1, sec, delay) {
-    const d = ns(delay || 0), n = ns(sec), l = log(f1 / f0);
-    return i => i <= d ? f0 : i >= d + n ? f1 : f0 * exp(l * (i - d) / n);
+    const d = ns(delay || 0), n = ns(sec), l = log(f1 / f0), r = exp(l / n);
+    let last = -2, v = f0;
+    return i => {
+      if (i <= d) return f0;
+      if (i >= d + n) return f1;
+      v = i === last + 1 ? v * r : f0 * exp(l * (i - d) / n);
+      last = i;
+      return v;
+    };
   }
 
   // ---------------- sources ----------------
@@ -265,8 +285,8 @@
   }
 
   // ---------------- reverb: 8-line FDN, Hadamard feedback, damped ----------------
-  // A generator (yields every ~0.4 s of audio) so the runtime fallback can slice
-  // a long stinger's render into small steps; room() runs it in one go.
+  // A generator (yields every ~0.34 s of audio) so the runtime fallback can slice
+  // a long stinger's render into small steps (Mix.space is how recipes use it).
   function* roomG(L, R, o) {
     o = o || {};
     const n = L.length, size = o.size || 1, pre = ns(o.pre || 0.01);
@@ -438,21 +458,24 @@
     }
     const k = decayK(o.t60 || dur); let v = 1;
     for (let i = 0; i < n; i++) { env[i] *= v; v *= k; }
+    if (n > SR / 2) yield;
     const base = o.stereo === false ? null : white(rng, n), wd = o.width == null ? 0.45 : o.width;
-    const side = (k) => {
+    const side = function* (k) {
       const x = white(rng, n);
       if (base && k) for (let i = 0; i < n; i++) x[i] = x[i] * wd + base[i] * (1 - wd);
       else if (base) for (let i = 0; i < n; i++) x[i] = base[i];
       svf(x, 'lp', o.fc || 420, 0.8); svf(x, 'lp', (o.fc || 420) * 1.4, 0.7);
+      if (n > SR / 2) yield;
       mul(norm(x), env);
       satArr(norm(x), o.drive || 2.2);
+      if (n > SR / 2) yield;
       svf(x, 'lp', o.lp || 2600, 0.7071);
       svf(x, 'hp', 35, 0.7071);
       return x;
     };
-    const L = side(0);
+    const L = yield* side(0);
     yield;
-    const R = o.stereo === false ? L : side(1);
+    const R = o.stereo === false ? L : yield* side(1);
     const p = Math.max(peakOf(L), peakOf(R)) || 1;
     return { L: scale(L, 1 / p), R: R === L ? L : scale(R, 1 / p) };
   }
@@ -495,6 +518,7 @@
     const bell = Float64Array.from(a), edge = Float64Array.from(a), air = Float64Array.from(a);
     svf(bell, 'bp', 480, 1.6); svf(edge, 'bp', 1250, 0.9); svf(air, 'bp', 2600, 0.7);
     for (let i = 0; i < n; i++) a[i] += bell[i] * (o.bell == null ? 0.15 : o.bell) + edge[i] * (o.edge == null ? 0.6 : o.edge) + air[i] * (o.air == null ? 1.1 : o.air);
+    if (n > SR / 4) yield;
     // the lips: a touch of even-harmonic drive (x²; its envelope thump is high-passed away), then tanh
     norm(a); for (let i = 0; i < n; i++) a[i] += 0.16 * a[i] * a[i];
     svf(a, 'hp', 70, 0.7071);
@@ -533,8 +557,9 @@
     for (let j = 0; j < notes.length; j++) {
       const f = note(notes[j]), x = new Float64Array(n);
       const ph = rng();                                       // the sine sits in phase with the centre saw's fundamental (never cancels it)
-      for (const c of [-7, 0, 6]) { const s = saw(n, f * cents(c ? c + rr(rng, -1, 1) : 0), c ? rng() : ph); for (let i = 0; i < n; i++) x[i] += s[i] * 0.33; }
+      for (const c of [-7, 0, 6]) { const s = saw(n, f * cents(c ? c + rr(rng, -1, 1) : 0), c ? rng() : ph); for (let i = 0; i < n; i++) x[i] += s[i] * 0.33; yield; }
       const sn = sine(n, f, ph + 0.5); for (let i = 0; i < n; i++) x[i] += sn[i] * 0.6;
+      yield;
       const lfo = rr(rng, 0.3, 0.6), lph = rng();
       svf(x, 'lp', i => (o.fc || 1100) * (1 + 0.18 * sin1(lph + lfo * i / SR)), 0.7);
       mul(x, asr(n, o.attack || 0.06, dur, rel, true));
@@ -752,7 +777,7 @@
     if (!chosen.some(([c, r]) => c === 0 && r === 0)) chosen[0] = [0, 0];          // first grain on sample 0
     for (const [c, r] of chosen) {
       const f = note(pick(rng, GRAIN_NOTES)) * cents(rr(rng, -20, 20));
-      m.add(grain(rng, f), c * 0.025 + r * 0.008, rr(rng, -4, 0), (c / 5 * 2 - 1) * 0.35);
+      m.add(grain(rng, f, { noise: -10 }), c * 0.025 + r * 0.008, rr(rng, -4, 0), (c / 5 * 2 - 1) * 0.35);   // the ping carries it; a quieter grit is all the codec needs to spend bits on
     }
     m.add(swish(rng, 0.33, 300, 900, { q: 1.0, peakAt: 0.45, floor: 0.12 }), 0, -7);
     return m;
@@ -952,6 +977,7 @@
     const p = Math.max(peakOf(L.subarray(0, nr)), peakOf(Rr.subarray(0, nr))) || 1;
     for (let i = 0; i < n; i++) { const t = ramp(i), g = (0.32 + 0.68 * t * Math.sqrt(t)) / p; L[i] *= g; Rr[i] *= g; }
     m.addSt({ L, R: Rr }, 0, -3);
+    yield;
     // the air being pulled in: band-passed noise swelling and brightening into the cut (a reversed cymbal of storm)
     // (centred: the thunder under it is already wide, and a noise bed in stereo costs twice the bytes)
     const air = white(rng, n);
@@ -1097,7 +1123,9 @@
       m.addSt(yield* stab(rng, T.stab, { t60: 0.35 + k * 0.08, fc0: 2600, fc1: 800, hold: 0.04, spread: 0.2 + k * 0.08 }), 0.001, -3);
       m.addSt(yield* pad(rng, T.pad, T.hold, { attack: 0.12, release: 0.6 + k * 0.05, fc: 1100 + k * 150, spread: 0.15 + k * 0.07 }), 0.02, -8);
       T.arp.forEach((nm, i) => m.add(tine(rng, note(nm), { t60: 0.5, len: 0.55, bright: -11 }), 0.06 + i * 0.07, -10, (i / 3 * 2 - 1) * (0.3 + k * 0.15)));
+      yield;
       if (T.boom) m.add(boom(rng, note(T.boom), { t60: 0.5 + k * 0.15, drive: 3, even: 0.4, lp: 1500, sub: k >= 2 }), 0.002, -5);
+      yield;
       if (T.horn) for (let i = 0; i < T.horn.length; i++) m.addSt(yield* horn(rng, note(T.horn[i]), i === T.horn.length - 1 ? 0.4 : 0.1, { release: 0.18 }), 0.12 + i * 0.1172, -7);
       if (k >= 2) {                                          // coins under the big tiers (money)
         for (let c = 0; c < 2 + k * 3; c++) m.add(coin(rng, note(pick(rng, COIN_NOTES))), 0.08 + pw(rng(), 1.3) * 0.7, -18 - rr(rng, 0, 6), rr(rng, -0.7, 0.7));
@@ -1115,6 +1143,7 @@
     m.addSt(yield* stab(rng, ['F2', 'C3', 'F3', 'A3', 'C4', 'F4'], { t60: 0.6, fc0: 2800, fc1: 900, hold: 0.08, spread: 0.7 }), 0.9375, -3);
     m.addSt(yield* pad(rng, ['F2', 'C3', 'A3', 'F4'], 0.95, { attack: 0.08, release: 0.7, fc: 1400, spread: 0.35 }), 0.94, -6);
     m.add(boom(rng, note('F2'), { t60: 0.9, drive: 2.6, lp: 1500, sub: true }), 0.9375, -5);
+    yield;
     const casc = ['F5', 'G5', 'A5', 'C6', 'D6', 'F6', 'G6', 'A6', 'C7', 'D7', 'F7'];
     casc.forEach((nm, i) => m.add(tine(rng, note(nm), { t60: 0.6, len: 0.62, bright: -12 }), 0.95 + i * 0.0586, -10 - i * 0.3, (i % 2 ? 1 : -1) * (0.2 + i * 0.06)));
     yield;
@@ -1147,12 +1176,14 @@
     let end = L.length, pk = 0;
     while (end > 1 && Math.abs(L[end - 1]) < thr && Math.abs(Rr[end - 1]) < thr) end--;
     if (meta.fixed) end = L.length;                         // timeline pieces keep their exact length
+    const natural = end;
     if (meta.maxDur) end = Math.min(end, ns(meta.maxDur));
     for (let i = 0, m = 0; i < end; i++) { const a = Math.max(Math.abs(L[i]), Math.abs(Rr[i])); if (a > m) { m = a; pk = i; } }
     end = Math.min(L.length, Math.max(end, pk + fade + 2));
     // a tail cut while still audible (maxDur) gets a longer fade, up to 60 ms, never into the transient
+    const cut = end < natural;
     let lvl = 0;
-    for (let i = Math.max(0, end - fade - ns(0.02)); i < end - fade; i++) lvl = Math.max(lvl, Math.abs(L[i]), Math.abs(Rr[i]));
+    if (cut) for (let i = Math.max(0, end - ns(0.001)); i < end; i++) lvl = Math.max(lvl, Math.abs(L[i]), Math.abs(Rr[i]));
     const fd = lvl > p * db(-45) ? Math.max(fade, Math.min(ns(0.06), Math.floor((end - pk) / 3))) : fade;
     const outL = new Float32Array(end), outR = new Float32Array(end);
     for (let i = 0; i < end; i++) {
@@ -1162,7 +1193,7 @@
     outL[end - 1] = 0; outR[end - 1] = 0;                    // digital silence on the last sample
     const g = PEAK / (Math.max(peakOf(outL), peakOf(outR)) || 1);
     for (let i = 0; i < end; i++) { outL[i] *= g; outR[i] *= g; }
-    return { L: outL, R: outR };
+    return { L: outL, R: outR, endDb: cut ? Math.round(toDb(lvl / p) * 10) / 10 : -60 };   // re its peak: how loud it was where maxDur cut it (−60: it ended by itself)
   }
 
   // ======================================================================
@@ -1242,7 +1273,7 @@
     'spin.press.fs': -27.9,
     'spin.press.dc': -27.9,
     'spin.press.t': -29.2,
-    'spin.dropout': -38.3,
+    'spin.dropout': -39,
     'land.thock': -31.9,
     'spin.lock': -30.1,
     'spin.brake': -29.1,

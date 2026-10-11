@@ -4,28 +4,34 @@
  * violet dusk of the base game and the golden free-spins storm) and
  * cross-faded by S.mood: a dithered sky, stratified ridges lit from the upper
  * left with storm-lit pines along their crests, the storm hunter's
- * lightning-rod lookout on the summit and, where the layout leaves room,
- * carved timber lodge posts with brass bands at the screen edges.
+ * lightning-rod lookout on the summit (with a smaller outpost lookout on the
+ * same ridge wherever the layout leaves sky to see one) and, where there is
+ * room, carved timber lodge posts with brass bands at the screen edges.
  * Live layers on top: twinkling stars, a slowly turning light fan, drifting
- * clouds, sky lightning (caught by the rod, rim-lighting crests and pines),
- * swaying storm lanterns, the storm's rain and rising motes.
+ * clouds, sky lightning (caught by a visible rod, rim-lighting crests, pines
+ * and the lookout), swaying storm lanterns, the storm's rain and rising motes.
  */
 (() => {
   'use strict';
   const G = window.GOS, FX = G.FX;
   const Scene = G.Scene = {};
+  // one light and one gold for the whole game live in materials.js; the literals are only a fallback
+  const Mat = G.Mat || {};
 
-  function mulberry(seed) {
-    return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  }
+  const mulberry = Mat.mulberry || (seed => () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  });
   // shared seeded PRNG: other modules bake stable wear and noise with it
   G.mulberry = G.mulberry || mulberry;
 
   // the one key light (upper left), shared with the frame and HUD
-  const KEY = { x: -0.57, y: -0.82 };
+  const KEY = Mat.LIGHT ? { x: Mat.LIGHT.x, y: Mat.LIGHT.y } : { x: -0.57, y: -0.82 };
   // the frame's gold ramp: hi, lit, mid, shade, deep, edge
-  const GOLD = ['#fff4c2', '#f2c95a', '#e6b648', '#9a6614', '#5e3a08', '#2a1404'];
+  const GOLD = Mat.GOLD ? ['hi', 'lit', 'mid', 'shade', 'deep', 'edge'].map(k => Mat.GOLD[k])
+    : ['#fff4c2', '#f2c95a', '#e6b648', '#9a6614', '#5e3a08', '#2a1404'];
+  // game.js draws the sky with a 4% overscan about the centre above quality 0; UI rects map back through it
+  const overscan = () => (G.Q.level > 0 ? 1.04 : 1);
 
   const rgbOf = hex => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
   const mix = (a, b, t) => {
@@ -46,13 +52,17 @@
   // brass shares the frame's gold; at dusk it sits in violet ambient light
   MOODS.forEach(M => { M.brass = GOLD.map(c => M.ambient ? mix(c, M.ambient, 0.24) : c); });
 
-  let layers = [null, null], rays = null, raysSize = 0, cloudSprites = [[], []], rimMask = null, rimTop = 0, lantern = null, flashRamps = null;
+  let layers = [null, null], rays = null, raysSize = 0, raysOver = null, raysFade = null, cloudSprites = [[], []];
+  let rimMask = null, rimTop = 0, lantern = null, flashRamps = null;
   let dirty = true, lastBuild = -1, layerDpr = 1, geo = null;
-  let stars = [], clouds = [], lanterns = [], shafts = [], rod = null;
-  let lightningT = 4, skyFlash = 0, rodK = 0, suspenseK = 0, stormK = 0;
+  let stars = [], clouds = [], lanterns = [], shafts = [], heads = [], rods = [];
+  let lightningT = 4, skyFlash = 0, suspenseK = 0, stormK = 0;
   // free-spins storm intensity: grows with the total multiplier (x1 -> 0, x127+ -> 1)
   Scene.storm = () => stormK;
-  // sky-flash intensity 0..1 (a strong strike is 1), for relighting the frame and chrome
+  // Sky-flash intensity 0..1 as it is shown on screen, for relighting the frame and chrome in step
+  // with the sky. A strong strike reads 1 at full motion; the value is ALREADY limited here: x0.3
+  // under reduced motion, and capped at 0.24 when the photosensitivity guard (FX.flashOk) mutes a
+  // strike. Consumers use it as is and must not scale it for reduced motion again.
   Scene.skyFlash = () => Math.min(1, skyFlash / 0.5);
 
   Scene.invalidate = () => { dirty = true; };
@@ -62,22 +72,28 @@
     layerDpr = G.DPR;
     geo = geometry(W, H);
     layers = [paint(0, W, H), paint(1, W, H)];
+    // the post heads stand in front of the sky: cut-outs of the finished layers, drawn over clouds and rays
+    heads = geo.posts.map(p => [0, 1].map(mi => paintHead(p, mi)));
     rimMask = G.Q.level > 0 ? paintRimMask(W, H) : null;     // lean devices keep the plain sky flash
     raysSize = Math.max(W, H) * 1.9;
-    rays = paintRays(raysSize);
+    // the fan is never drawn at the lowest quality, so it is not baked there either
+    rays = G.Q.level > 0 ? paintRays(raysSize) : null;
+    raysOver = rays ? G.offscreen(W, H * RAY_H, RAY_S) : null;
+    raysFade = raysFade || paintRamp('255,255,255', RAY_FADE);
     cloudSprites = [[0, 1, 2].map(v => paintCloud(v, MOODS[0].cloud)), [0, 1, 2].map(v => paintCloud(v, MOODS[1].cloud))];
     lantern = geo.posts.length ? paintLantern(geo.cw) : null;
-    flashRamps = flashRamps || ['170,200,255', '255,220,150'].map(paintFlashRamp);
+    flashRamps = flashRamps || ['170,200,255', '255,220,150'].map(c => paintRamp(c, FLASH_FADE));
     lanterns = geo.posts.map((p, i) => ({ x: p.hook.x, y: p.hook.y, ph: i * 2.1 }));
     shafts = geo.posts.map(p => p.shaft);
-    rod = { x: geo.tower.x, y: geo.tower.tipY, s: geo.tower.ts };
-    const r = mulberry(7), far = geo.ridges[0];
-    // stars only in open sky, never over the mountains
+    // only a rod someone can see catches strikes and flares
+    rods = geo.towers.filter(T => T.seen).map(T => ({ x: T.x, y: T.tipY, s: T.ts, sky: T.sky, k: 0 }));
+    const r = mulberry(7);
+    // stars only in open sky: never over ridges, pines, lookouts or the posts
     const nStars = Math.round(W * H / 9000 * G.Q.fx);
     stars = [];
     for (let k = 0; k < nStars * 3 && stars.length < nStars; k++) {
       const s = { x: r() * W, y: Math.pow(r(), 1.6) * H * 0.6, s: 0.6 + r() * 1.8, p: r() * 7, f: 0.6 + r() * 2.2 };
-      if (s.y < yAt(far, s.x) - 6) stars.push(s);
+      if (openSky(s.x, s.y, 4 + s.s * 1.5)) stars.push(s);
     }
     clouds = Array.from({ length: Math.max(4, Math.round(9 * G.Q.fx)) }, (_, i) => ({ v: i % 3, x: r() * (W + 600) - 300, y: H * (0.12 + r() * 0.42), s: 0.5 + r() * 0.9, d: 0.3 + r() * 0.7, a: 0.25 + r() * 0.3 }));
     dirty = false; lastBuild = G.clock.real;
@@ -87,6 +103,21 @@
   const capY = () => G.H * 0.16;
   // lodge posts + lanterns only where the layout leaves room for them (wide screens)
   const hasPosts = () => !G.L.portrait && G.L.left && G.L.left.x > colW() * 1.9 + G.W * 0.008;
+  // the light fan: a low-res overlay (scale RAY_S) over the top RAY_H of the screen, fading out
+  // over the ridges instead of stopping at a hard edge
+  const RAY_S = 0.35, RAY_H = 0.8;
+  const RAY_FADE = t => G.clamp(1 - (t - 0.68) / 0.32, 0, 1);       // of RAY_H: full to 0.54H, gone by 0.8H
+  const FLASH_FADE = t => G.clamp(1 - (t - 0.7) / 0.25, 0, 1);      // full to 0.7H, gone by 0.95H
+
+  const inBox = (b, px, py, m) => px > b.x - m && px < b.x + b.w + m && py > b.y - m && py < b.y + b.h + m;
+  // is (px,py) clear sky, with a margin m? (stars are kept off everything that stands against it)
+  function openSky(px, py, m) {
+    for (const pts of geo.ridges) if (py > Math.min(yAt(pts, px - m), yAt(pts, px), yAt(pts, px + m)) - m) return false;
+    for (const pines of geo.pines) for (const p of pines) if (Math.abs(px - p.x) < p.w + m && py > p.y - p.h - m) return false;
+    for (const T of geo.towers) if (inBox(T.box, px, py, m)) return false;
+    for (const p of geo.posts) for (const b of p.boxes) if (inBox(b, px, py, m)) return false;
+    return true;
+  }
 
   // ---------------- geometry (shared by both moods, deterministic per layout) ----------------
   function ridge(W, base, amp, peak, rough, seed) {
@@ -117,29 +148,93 @@
     // which narrows on tall screens (there it would otherwise peek over the board like a hut on the frame)
     const s = H * 0.06, ts = s * G.clamp(W / H / 1.4, 0.45, 1);
     const tower = { x: peak[0], y: peak[1], s, ts, tipY: peak[1] - ts * 2.9 };
-    // the lookout stands on a levelled summit, not astride a needle of rock
-    far.forEach(p => { const w = G.clamp(1 - (Math.abs(p[0] - peak[0]) - ts * 0.7) / (ts * 0.9), 0, 1); p[1] += (peak[1] - p[1]) * w * w; });
+    const cw = colW(), cy = capY(), posts = [];
+    if (hasPosts()) {
+      // the bracket is as long as the room allows: the lantern, swinging in a full storm (about
+      // 0.4 of a post width either side of its hook), keeps clear of the panels beside it
+      const k = 1 / overscan(), left = W / 2 + (G.L.left.x - W / 2) * k;
+      const arm = G.clamp(left - Math.max(3, cw * 0.06) - W * 0.008 - cw * 1.35, cw * 0.42, cw * 0.68);
+      [[W * 0.008, 1], [W - W * 0.008 - cw, -1]].forEach(([x0, dir], i) => {
+        const st = cy + cw * 0.44, ay = st + cw * 0.5;
+        const ax1 = (dir > 0 ? x0 + cw : x0) + dir * arm;
+        const hook = { x: ax1 - dir * cw * 0.05, y: ay + cw * 0.13 };
+        // the head (finial to bracket) as a sprite box, plus everything the post occupies
+        const hx0 = Math.min(x0 - cw * 0.16, ax1 - cw * 0.14), hx1 = Math.max(x0 + cw * 1.16, ax1 + cw * 0.14);
+        const head = { x: hx0, y: cy - cw * 0.3, w: hx1 - hx0, h: ay + cw * 0.6 - (cy - cw * 0.3) };
+        const lamp = { x: hook.x - cw * 0.42, y: ay - cw * 0.2, w: cw * 0.84, h: hook.y + cw * 1.15 - (ay - cw * 0.2) };
+        posts.push({ x: x0, y: cy, w: cw, dir, seed: 300 + i * 17, st, ay, ax1, arm, hook, head,
+          shaft: { x: x0, y: st, w: cw, h: H - st }, boxes: [head, lamp, { x: x0 - cw * 0.16, y: head.y, w: cw * 1.32, h: H - head.y }] });
+      });
+    }
+    // the summit sits behind the board in every layout, so a smaller outpost lookout goes up on the
+    // same ridge wherever the layout leaves sky to see it (and only a visible rod catches strikes)
+    const avoid = uiRects(posts);
+    tower.seen = !avoid.some(b => inBox(b, tower.x, tower.tipY, ts * 0.3));
+    const outpost = tower.seen ? null : placeOutpost(far, [mid, near], W, avoid, ts);
+    const towers = outpost ? [tower, outpost] : [tower];
+    // each lookout stands on levelled ground, not astride a needle of rock
+    towers.forEach(T => {
+      far.forEach(p => { const w = G.clamp(1 - (Math.abs(p[0] - T.x) - T.ts * 0.7) / (T.ts * 0.9), 0, 1); p[1] += (T.y - p[1]) * w * w; });
+      T.box = { x: T.x - T.ts * 0.62, y: T.tipY - 2, w: T.ts * 1.36, h: T.y - T.tipY + 2 };
+      // the open column of sky above the rod (between the posts and the panels), for its strikes
+      const clear = px => px > 0 && px < W && !avoid.some(b => px > b.x && px < b.x + b.w && b.y < T.tipY);
+      let lo = T.x, hi = T.x;
+      while (clear(lo - 2)) lo -= 2;
+      while (clear(hi + 2)) hi += 2;
+      T.sky = [lo, hi];
+    });
     const ridges = [far, mid, near];
-    const pines = ridges.map((pts, k) => plant(pts, k, W, H, k === 0 ? tower : null));
+    const pines = ridges.map((pts, k) => plant(pts, k, W, H, k === 0 ? towers : []));
     // two hunting cabins on the middle slopes, out in the margins beside the board
     const rc = mulberry(77), cabins = [0.1, 0.76].map(u => {
       const cx = W * (u + (rc() - 0.5) * 0.04), c = H * 0.018;
       return { x: cx, y: yAt(mid, cx) + c * 0.9, c, flip: rc() < 0.5 };
     });
-    const cw = colW(), cy = capY(), posts = [];
-    if (hasPosts()) {
-      [[W * 0.008, 1], [W - W * 0.008 - cw, -1]].forEach(([x0, dir], i) => {
-        const st = cy + cw * 0.44, ay = st + cw * 0.5;
-        const ax1 = (dir > 0 ? x0 + cw : x0) + dir * cw * 0.68;
-        posts.push({ x: x0, y: cy, w: cw, dir, seed: 300 + i * 17, st, ay, ax1,
-          hook: { x: ax1 - dir * cw * 0.05, y: ay + cw * 0.13 }, shaft: { x: x0, y: st, w: cw, h: H - st } });
-      });
+    return { ridges, pines, tower, towers, cabins, posts, cw };
+  }
+
+  // everything that covers the world, in scene coordinates: the board (and the line under it),
+  // the panels, logo, Sebastian and the bar, plus the posts and their lanterns
+  function uiRects(posts) {
+    const L = G.L, W = G.W, H = G.H, k = 1 / overscan(), out = [];
+    const add = r => { if (r && r.w > 2 && r.h > 2) out.push({ x: W / 2 + (r.x - W / 2) * k, y: H / 2 + (r.y - H / 2) * k, w: r.w * k, h: r.h * k }); };
+    if (L.reel) add({ x: L.reel.x, y: L.reel.y, w: L.reel.w, h: L.reel.h + (L.hintH || 0) });
+    [L.left, L.buy, L.bet, L.well, L.bottom].forEach(add);
+    if (!L.noLogo) add(L.logo);
+    if (!L.noSeb) add(L.seb);
+    posts.forEach(p => out.push(...p.boxes));
+    return out;
+  }
+
+  // the outpost: as large as fits (up to 0.72 of the summit lookout), centred in the widest gap,
+  // standing mostly clear of the nearer ridges; none when no gap is wide enough
+  function placeOutpost(far, front, W, avoid, ts0) {
+    const ground = (px, ts) => Math.min(...[-1, -0.5, 0, 0.5, 1].map(f => yAt(far, px + f * ts * 0.56)));
+    const H = G.H, k = 1 - 1 / overscan(), ex = W / 2 * k, ey = H / 2 * k;     // scene edges just off screen
+    const fits = (px, ts, m) => {
+      const g = ground(px, ts), tip = g - ts * 2.9, x0 = px - ts * 0.62, x1 = px + ts * 0.74;
+      if (x0 < ex + m || x1 > W - ex - m || tip < ey + m) return false;
+      let occ = g;
+      for (const pts of front) for (const f of [-1, 0, 1]) occ = Math.min(occ, yAt(pts, px + f * ts * 0.5));
+      if (occ - tip < (g - tip) * 0.85) return false;
+      return !avoid.some(b => x1 + m > b.x && x0 - m < b.x + b.w && g + m > b.y && tip - m < b.y + b.h);
+    };
+    const tsMin = Math.max(7, ts0 * 0.38);
+    for (let ts = ts0 * 0.72; ts >= tsMin; ts *= 0.9) {
+      const m = Math.max(5, ts * 0.12);
+      let best = null, run = -1;
+      for (let px = 0; px <= W + 2; px += 2) {
+        const ok = px <= W && fits(px, ts, m);
+        if (ok && run < 0) run = px;
+        if (!ok && run >= 0) { const len = px - 2 - run; if (!best || len > best.len) best = { len, x: run + len / 2 }; run = -1; }
+      }
+      if (best) { const g = ground(best.x, ts); return { x: best.x, y: g, s: ts, ts, tipY: g - ts * 2.9, seen: true, outpost: true }; }
     }
-    return { ridges, pines, tower, cabins, posts, cw };
+    return null;
   }
 
   // pines along a crest: seeded groves, spaced in pixels, so a layout always grows the same forest
-  function plant(pts, k, W, H, tower) {
+  function plant(pts, k, W, H, towers) {
     const r = mulberry(501 + k * 97), out = [];
     const h0 = H * [0.016, 0.026, 0.04][k], hv = H * [0.014, 0.022, 0.035][k];
     const ph1 = r() * 6.3, ph2 = r() * 6.3;
@@ -148,7 +243,7 @@
       const u = px / W, dens = 0.45 + 0.35 * Math.sin(u * 8.2 + ph1) + 0.25 * Math.sin(u * 19.7 + ph2);
       // fixed draws per step keep the forest stable whatever gets skipped
       const take = r(), hr = r(), wr = r(), lr = r(), tr = r(), sr = r();
-      if (take < dens * dens * 1.4 && !(tower && Math.abs(px - tower.x) < tower.ts * 1.6)) {
+      if (take < dens * dens * 1.4 && !towers.some(T => Math.abs(px - T.x) < T.ts * 1.6)) {
         const h = (h0 + hv * hr) * (0.75 + 0.35 * G.clamp(dens, 0, 1));
         out.push({ x: px, y: yAt(pts, px) + h * 0.14, h, w: h * (0.3 + wr * 0.1), lean: (lr - 0.5) * 0.08, tiers: 4 + (tr * 3 | 0), seed: (sr * 1e9) | 0 });
       }
@@ -160,34 +255,42 @@
   // ---------------- painting one mood ----------------
   function paint(mi, W, H) {
     const M = MOODS[mi], o = G.offscreen(W, H), x = o.x, r = mulberry(1234);
-    // sky
-    const g = x.createLinearGradient(0, 0, 0, H);
+    // the sky's gradients and glows have no detail to lose, so they are painted at a quarter of the
+    // device resolution and scaled up (full size, they were most of the bake); the grain below
+    // breaks up any steps the scaling leaves
+    const so = G.offscreen(W, H, layerDpr * 0.25), y = so.x;
+    const g = y.createLinearGradient(0, 0, 0, H);
     M.sky.forEach((c, i) => g.addColorStop([0, 0.3, 0.55, 0.74, 0.86][i], c));
-    x.fillStyle = g; x.fillRect(0, 0, W, H);
-    // nebula wisps
-    x.globalCompositeOperation = 'lighter';
+    y.fillStyle = g; y.fillRect(0, 0, W, H);
+    // nebula wisps: elliptical glows that fade to nothing at their rim (no hard arcs)
+    y.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 7; i++) {
-      const cx = r() * W, cy = r() * H * 0.5, rr = (0.25 + r() * 0.35) * Math.max(W, H);
-      const ng = x.createRadialGradient(cx, cy, 0, cx, cy, rr);
-      ng.addColorStop(0, FX.hexA(M.nebula[i % 3], 0.12)); ng.addColorStop(1, FX.hexA(M.nebula[i % 3], 0));
-      x.fillStyle = ng; x.beginPath(); x.ellipse(cx, cy, rr, rr * 0.45, r() * 3, 0, 7); x.fill();
+      const cx = r() * W, cy = r() * H * 0.5, rr = (0.25 + r() * 0.35) * Math.max(W, H), rot = r() * 3;
+      y.save(); y.translate(cx, cy); y.rotate(rot); y.scale(1, 0.45);
+      const ng = y.createRadialGradient(0, 0, 0, 0, 0, rr);
+      ng.addColorStop(0, FX.hexA(M.nebula[i % 3], 0.15)); ng.addColorStop(1, FX.hexA(M.nebula[i % 3], 0));
+      y.fillStyle = ng; y.beginPath(); y.arc(0, 0, rr, 0, 7); y.fill();
+      y.restore();
     }
     // sun glow behind the summit
     const sx = W / 2, sy = H * 0.6;
-    const sg = x.createRadialGradient(sx, sy, 0, sx, sy, Math.max(W, H) * 0.6);
+    const sg = y.createRadialGradient(sx, sy, 0, sx, sy, Math.max(W, H) * 0.6);
     sg.addColorStop(0, M.sun + '.55)'); sg.addColorStop(0.25, M.sun + '.22)'); sg.addColorStop(1, M.sun + '0)');
-    x.fillStyle = sg; x.fillRect(0, 0, W, H);
-    x.globalCompositeOperation = 'source-over';
+    y.fillStyle = sg; y.fillRect(0, 0, W, H);
+    x.drawImage(so.c, 0, 0, W, H);
 
-    // mountains: far (with the summit lookout), mid (with the cabins), near
+    // mountains: far (with the lookouts), mid (with the cabins), near
     const [far, mid, near] = geo.ridges;
+    // grain only where sky shows (above the far crest): the ridges cover the rest, and the glows
+    // and vignette laid over a grained sky do not band again
+    dither(x, o.c, () => { x.beginPath(); skyPath(x, far, W, 2); });
     const haze = (y0, a) => { const hg = x.createLinearGradient(0, y0 - H * 0.25, 0, y0 + H * 0.1); hg.addColorStop(0, FX.hexA(M.sky[3], 0)); hg.addColorStop(1, FX.hexA(M.sky[3], a)); x.fillStyle = hg; x.fillRect(0, y0 - H * 0.25, W, H * 0.35); };
     // the beacon in two passes that add up to its old strength in the sky: most of it behind the
     // ridge, so the summit stands dark against it, a little spilling over the rock
     drawBeacon(x, geo.tower, M, 0.6);
     drawRidge(x, 0, far, W, H, M);
     drawBeacon(x, geo.tower, M, 0.4);
-    drawTower(x, geo.tower, far, M);
+    geo.towers.forEach(T => drawTower(x, T, far, M));
     haze(H * 0.8, 0.35);
     drawRidge(x, 1, mid, W, H, M);
     geo.cabins.forEach(c => drawCabin(x, c, M));
@@ -201,8 +304,15 @@
     const vg = x.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.85);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
     x.fillStyle = vg; x.fillRect(0, 0, W, H);
-    dither(x, o.c);
     return o.c;
+  }
+
+  // the open sky above a crest (dy pixels below it), as a closed path
+  function skyPath(x, pts, W, dy) {
+    const n = pts.length - 1;
+    x.moveTo(-4, -4); x.lineTo(W + 4, -4); x.lineTo(W + 4, pts[n][1] + dy);
+    for (let i = n; i >= 0; i--) x.lineTo(pts[i][0], pts[i][1] + dy);
+    x.lineTo(-4, pts[0][1] + dy); x.closePath();
   }
 
   // ---------------- dither grain ----------------
@@ -217,8 +327,11 @@
     x.putImageData(id, 0, 0);
     return (grain = c);
   }
-  function dither(x, c) {
-    x.save(); x.setTransform(1, 0, 0, 1, 0, 0);
+  function dither(x, c, area) {
+    x.save();
+    // the clip is built in CSS pixels and stays put in device pixels, where the grain is laid
+    area(); x.clip();
+    x.setTransform(1, 0, 0, 1, 0, 0);
     x.globalCompositeOperation = 'difference';
     if (x.globalCompositeOperation !== 'difference') { x.restore(); return; }   // no blend modes: skip rather than brighten
     // add 0..9 levels, then take 4 back off: the mean moves half a level, so the palette does not lift
@@ -239,6 +352,30 @@
     x.lineTo(W + e, pts[pts.length - 1][1] + dy); x.lineTo(W + e, b); x.closePath();
   }
 
+  // The strip under a crest down to a shifted copy of it, wherever the copy runs below the crest:
+  // the ridge shape minus the shifted one, as one plain polygon. It never rises above the crest,
+  // so it needs no clip (an anti-aliased path clip made every one of these fills slow to bake).
+  // Both crests are polylines, sampled at all of their corners.
+  function bandPath(x, pts, W, dx, dy) {
+    const xs = [], n = pts.length - 1, e = Math.abs(dx) + 4;
+    for (let i = 0, j = 0; i <= n || j <= n;) {        // merge the corners of the crest and of its copy
+      const a = i <= n ? pts[i][0] : Infinity, b = j <= n ? pts[j][0] + dx : Infinity;
+      if (a <= b) { xs.push(a); i++; if (a === b) j++; } else { xs.push(b); j++; }
+    }
+    xs.unshift(-e); xs.push(W + e);
+    // the copy's depth below the crest is linear between corners: add the points where it crosses
+    const gap = px => yAt(pts, px - dx) + dy - yAt(pts, px), X = [];
+    for (let i = 0; i < xs.length; i++) {
+      if (i) { const f0 = gap(xs[i - 1]), f1 = gap(xs[i]); if ((f0 > 0) !== (f1 > 0) && f0 !== f1) X.push(xs[i - 1] + (xs[i] - xs[i - 1]) * f0 / (f0 - f1)); }
+      X.push(xs[i]);
+    }
+    const top = X.map(px => yAt(pts, px)), low = X.map((px, i) => top[i] + Math.max(0, gap(px)));
+    x.moveTo(X[0], top[0]);
+    for (let i = 1; i < X.length; i++) x.lineTo(X[i], top[i]);
+    for (let i = X.length - 1; i >= 0; i--) x.lineTo(X[i], low[i]);
+    x.closePath();
+  }
+
   function drawRidge(x, k, pts, W, H, M) {
     const body = M.m[k], dpr = layerDpr;
     // pines stand just behind the crest, rim-lit on the side facing the key light
@@ -254,22 +391,22 @@
     g.addColorStop(0, body); g.addColorStop(1, mix(body, M.shade, 0.5));
     x.beginPath(); ridgePath(x, pts, W, H, 0, 0); x.fillStyle = g; x.fill();
 
-    x.save();
-    x.beginPath(); ridgePath(x, pts, W, H, 0, 0); x.clip();
     // slopes turned to the key light catch a soft band under the crest (the crest
     // minus a copy of itself shifted away from the light), slopes turned away fall into shade
     const D = H * [0.032, 0.028, 0.026][k];
-    const steps = G.Q.level > 0 ? 9 : 5;
+    const steps = [5, 6, 9][G.Q.level] || 9;
     x.fillStyle = FX.hexA(M.lit, [0.22, 0.28, 0.32][k] / steps);
     for (let i = 1; i <= steps; i++) {
       const d = D * Math.pow(i / steps, 1.4);
-      x.beginPath(); ridgePath(x, pts, W, H, 0, 0); ridgePath(x, pts, W, H, -KEY.x * d, -KEY.y * d); x.fill('evenodd');
+      x.beginPath(); bandPath(x, pts, W, -KEY.x * d, -KEY.y * d); x.fill();
     }
     x.fillStyle = FX.hexA(M.shade, 0.27 / steps);
     for (let i = 1; i <= steps; i++) {
       const d = D * 1.3 * Math.pow(i / steps, 1.2);
-      x.beginPath(); ridgePath(x, pts, W, H, 0, 0); ridgePath(x, pts, W, H, -d, d * 0.3); x.fill('evenodd');
+      x.beginPath(); bandPath(x, pts, W, -d, d * 0.3); x.fill();
     }
+    x.save();
+    x.beginPath(); ridgePath(x, pts, W, H, 0, 0); x.clip();
     strata(x, pts, k, W, H, M, top);
     x.restore();
 
@@ -362,57 +499,60 @@
     x.restore();
   }
 
-  function drawTower(x, T, far, M) {
+  // timber-and-iron fire lookout: splayed legs, braced bays, a catwalk, a cabin and the rod,
+  // in one colour (drawn twice for the lit rim and body, once more in the strike's rim mask)
+  function towerParts(x, T, far, col, ox, oy) {
     const px = T.x, py = T.y, s = T.ts;
-    // timber-and-iron fire lookout: splayed legs, braced bays, a catwalk, a cabin and the rod
     const gL = yAt(far, px - s * 0.56) + s * 0.05, gR = yAt(far, px + s * 0.56) + s * 0.05;
     const fl = py - s * 1.28, ct = fl - s * 0.46, ap = ct - s * 0.3, tip = T.tipY;
-    const lw = Math.max(1, s * 0.05), bw = Math.max(0.6, s * 0.02), o = Math.max(0.5, s * 0.014);
+    const lw = Math.max(1, s * 0.05), bw = Math.max(0.6, s * 0.02);
     const legX = (sd, f) => px + sd * s * (0.56 - 0.28 * f);
     const legY = (sd, f) => { const g0 = sd < 0 ? gL : gR; return g0 + (fl - g0) * f; };
-    const parts = (ox, oy, col) => {
-      x.save(); x.translate(ox, oy);
-      x.strokeStyle = x.fillStyle = col; x.lineCap = 'round'; x.lineJoin = 'round';
-      // back legs, thinner, for depth
-      x.lineWidth = lw * 0.7; x.beginPath();
-      [-1, 1].forEach(sd => { x.moveTo(px + sd * s * 0.3, (sd < 0 ? gL : gR) - s * 0.06); x.lineTo(px + sd * s * 0.15, fl); });
-      x.stroke();
-      x.lineWidth = lw; x.beginPath();
-      [-1, 1].forEach(sd => { x.moveTo(legX(sd, 0), legY(sd, 0)); x.lineTo(legX(sd, 1), legY(sd, 1)); });
-      x.stroke();
-      // iron tie rods: X braces in three bays, struts between them
-      const fs = [0, 0.38, 0.7, 1];
-      x.lineWidth = bw; x.beginPath();
-      for (let i = 0; i < 3; i++) {
-        const a = fs[i], b = fs[i + 1];
-        x.moveTo(legX(-1, a), legY(-1, a)); x.lineTo(legX(1, b), legY(1, b));
-        x.moveTo(legX(1, a), legY(1, a)); x.lineTo(legX(-1, b), legY(-1, b));
-        if (i) { x.moveTo(legX(-1, a), legY(-1, a)); x.lineTo(legX(1, a), legY(1, a)); }
-      }
-      // catwalk railing
-      x.moveTo(px - s * 0.5, fl - s * 0.2); x.lineTo(px + s * 0.5, fl - s * 0.2);
-      for (let i = 0; i <= 4; i++) { const rx = px - s * 0.5 + i * s * 0.25; x.moveTo(rx, fl - s * 0.2); x.lineTo(rx, fl); }
-      x.stroke();
-      x.fillRect(px - s * 0.52, fl - s * 0.03, s * 1.04, Math.max(1, s * 0.06));
-      // cabin and its hipped roof
-      x.fillRect(px - s * 0.34, ct, s * 0.68, fl - ct);
-      x.beginPath(); x.moveTo(px - s * 0.47, ct + s * 0.03); x.lineTo(px - s * 0.08, ap + s * 0.02);
-      x.lineTo(px + s * 0.08, ap + s * 0.02); x.lineTo(px + s * 0.47, ct + s * 0.03); x.closePath(); x.fill();
-      // the lightning rod: a tapered spike on a glass insulator, a storm ball and the hunter's pennant
-      const rw = Math.max(0.8, s * 0.03);
-      x.beginPath(); x.moveTo(px - rw / 2, ap + s * 0.02); x.lineTo(px - rw * 0.15, tip + s * 0.08); x.lineTo(px, tip);
-      x.lineTo(px + rw * 0.15, tip + s * 0.08); x.lineTo(px + rw / 2, ap + s * 0.02); x.closePath(); x.fill();
-      x.beginPath(); x.ellipse(px, ap - s * 0.05, Math.max(0.9, s * 0.055), Math.max(0.7, s * 0.04), 0, 0, 7); x.fill();
-      x.beginPath(); x.arc(px, tip + (ap - tip) * 0.3, Math.max(0.8, s * 0.042), 0, 7); x.fill();
-      x.beginPath(); x.moveTo(px, ap - s * 0.42); x.quadraticCurveTo(px + s * 0.14, ap - s * 0.4, px + s * 0.26, ap - s * 0.36);
-      x.quadraticCurveTo(px + s * 0.12, ap - s * 0.33, px, ap - s * 0.3); x.fill();
-      // down conductor to the rock
-      x.lineWidth = Math.max(0.5, s * 0.012); x.beginPath();
-      x.moveTo(px + s * 0.05, ap + s * 0.06); x.quadraticCurveTo(px + s * 0.66, (ct + gR) / 2, px + s * 0.68, gR + s * 0.02); x.stroke();
-      x.restore();
-    };
-    parts(0, 0, FX.hexA(M.towerLit, 0.7));               // key-light rim on the upper-left edges
-    parts(-KEY.x * o, -KEY.y * o, M.tower);               // the body, shifted away from the light
+    x.save(); x.translate(ox, oy);
+    x.strokeStyle = x.fillStyle = col; x.lineCap = 'round'; x.lineJoin = 'round';
+    // back legs, thinner, for depth
+    x.lineWidth = lw * 0.7; x.beginPath();
+    [-1, 1].forEach(sd => { x.moveTo(px + sd * s * 0.3, (sd < 0 ? gL : gR) - s * 0.06); x.lineTo(px + sd * s * 0.15, fl); });
+    x.stroke();
+    x.lineWidth = lw; x.beginPath();
+    [-1, 1].forEach(sd => { x.moveTo(legX(sd, 0), legY(sd, 0)); x.lineTo(legX(sd, 1), legY(sd, 1)); });
+    x.stroke();
+    // iron tie rods: X braces in three bays, struts between them
+    const fs = [0, 0.38, 0.7, 1];
+    x.lineWidth = bw; x.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = fs[i], b = fs[i + 1];
+      x.moveTo(legX(-1, a), legY(-1, a)); x.lineTo(legX(1, b), legY(1, b));
+      x.moveTo(legX(1, a), legY(1, a)); x.lineTo(legX(-1, b), legY(-1, b));
+      if (i) { x.moveTo(legX(-1, a), legY(-1, a)); x.lineTo(legX(1, a), legY(1, a)); }
+    }
+    // catwalk railing
+    x.moveTo(px - s * 0.5, fl - s * 0.2); x.lineTo(px + s * 0.5, fl - s * 0.2);
+    for (let i = 0; i <= 4; i++) { const rx = px - s * 0.5 + i * s * 0.25; x.moveTo(rx, fl - s * 0.2); x.lineTo(rx, fl); }
+    x.stroke();
+    x.fillRect(px - s * 0.52, fl - s * 0.03, s * 1.04, Math.max(1, s * 0.06));
+    // cabin and its hipped roof
+    x.fillRect(px - s * 0.34, ct, s * 0.68, fl - ct);
+    x.beginPath(); x.moveTo(px - s * 0.47, ct + s * 0.03); x.lineTo(px - s * 0.08, ap + s * 0.02);
+    x.lineTo(px + s * 0.08, ap + s * 0.02); x.lineTo(px + s * 0.47, ct + s * 0.03); x.closePath(); x.fill();
+    // the lightning rod: a tapered spike on a glass insulator, a storm ball and the hunter's pennant
+    const rw = Math.max(0.8, s * 0.03);
+    x.beginPath(); x.moveTo(px - rw / 2, ap + s * 0.02); x.lineTo(px - rw * 0.15, tip + s * 0.08); x.lineTo(px, tip);
+    x.lineTo(px + rw * 0.15, tip + s * 0.08); x.lineTo(px + rw / 2, ap + s * 0.02); x.closePath(); x.fill();
+    x.beginPath(); x.ellipse(px, ap - s * 0.05, Math.max(0.9, s * 0.055), Math.max(0.7, s * 0.04), 0, 0, 7); x.fill();
+    x.beginPath(); x.arc(px, tip + (ap - tip) * 0.3, Math.max(0.8, s * 0.042), 0, 7); x.fill();
+    x.beginPath(); x.moveTo(px, ap - s * 0.42); x.quadraticCurveTo(px + s * 0.14, ap - s * 0.4, px + s * 0.26, ap - s * 0.36);
+    x.quadraticCurveTo(px + s * 0.12, ap - s * 0.33, px, ap - s * 0.3); x.fill();
+    // down conductor to the rock
+    x.lineWidth = Math.max(0.5, s * 0.012); x.beginPath();
+    x.moveTo(px + s * 0.05, ap + s * 0.06); x.quadraticCurveTo(px + s * 0.66, (ct + gR) / 2, px + s * 0.68, gR + s * 0.02); x.stroke();
+    x.restore();
+  }
+
+  function drawTower(x, T, far, M) {
+    const px = T.x, s = T.ts, fl = T.y - s * 1.28, ct = fl - s * 0.46, o = Math.max(0.5, s * 0.014);
+    towerParts(x, T, far, FX.hexA(M.towerLit, 0.7), 0, 0);              // key-light rim on the upper-left edges
+    towerParts(x, T, far, M.tower, -KEY.x * o, -KEY.y * o);             // the body, shifted away from the light
     // the lookout's lamp-lit windows: warm panes, brightest low where the lamp sits, a mullion each
     const ww = s * 0.15, wh = s * 0.16, wy = ct + s * 0.11 - KEY.y * o;
     const wgr = x.createLinearGradient(0, wy, 0, wy + wh);
@@ -424,10 +564,11 @@
       for (let i = -1; i <= 1; i++) x.fillRect(px + i * s * 0.205 - KEY.x * o - s * 0.008, wy, s * 0.016, wh);
       x.fillRect(px - s * 0.3 - KEY.x * o, wy + wh * 0.45, s * 0.6, s * 0.014);
     }
+    // lamplight spilling from the panes: kept tight, so the cabin still reads as a dark silhouette
     x.save(); x.globalCompositeOperation = 'lighter';
-    const wg = x.createRadialGradient(px, wy + wh / 2, 0, px, wy + wh / 2, s * 0.7);
-    wg.addColorStop(0, FX.hexA(M.window, 0.45)); wg.addColorStop(1, FX.hexA(M.window, 0));
-    x.fillStyle = wg; x.fillRect(px - s * 0.7, wy + wh / 2 - s * 0.7, s * 1.4, s * 1.4);
+    const wg = x.createRadialGradient(px, wy + wh / 2, 0, px, wy + wh / 2, s * 0.48);
+    wg.addColorStop(0, FX.hexA(M.window, 0.3)); wg.addColorStop(1, FX.hexA(M.window, 0));
+    x.fillStyle = wg; x.fillRect(px - s * 0.48, wy + wh / 2 - s * 0.48, s * 0.96, s * 0.96);
     x.restore();
   }
 
@@ -553,11 +694,11 @@
     x.fillStyle = fg; x.beginPath(); x.arc(ax, at - fr, fr, 0, 7); x.fill();
 
     // iron bracket with a knee brace and a scroll, the lantern hook at its end
-    const ay = P.ay, a0 = dir > 0 ? x0 + w : x0, a1 = P.ax1, iw = Math.max(1.2, w * 0.06);
+    const ay = P.ay, a0 = dir > 0 ? x0 + w : x0, a1 = P.ax1, iw = Math.max(1.2, w * 0.06), kb = Math.min(w * 0.44, P.arm * 0.65);
     x.lineCap = 'round'; x.lineJoin = 'round';
     const arm = () => {
       x.beginPath(); x.moveTo(a0, ay); x.lineTo(a1, ay);
-      x.moveTo(a0, ay + w * 0.42); x.quadraticCurveTo(a0 + dir * w * 0.1, ay + w * 0.06, a0 + dir * w * 0.44, ay);
+      x.moveTo(a0, ay + kb * 0.95); x.quadraticCurveTo(a0 + dir * kb * 0.23, ay + kb * 0.14, a0 + dir * kb, ay);
       x.moveTo(a1, ay); x.quadraticCurveTo(a1 + dir * w * 0.09, ay - w * 0.02, a1 + dir * w * 0.05, ay - w * 0.1);
       x.quadraticCurveTo(a1, ay - w * 0.14, a1 - dir * w * 0.03, ay - w * 0.08);
     };
@@ -577,6 +718,24 @@
       x.save(); x.beginPath(); x.rect(rx, ry, rw, rh); x.clip(); x.fillRect(lx - lr, ly - lr, lr * 2, lr * 2); x.restore();
     });
     x.restore();
+  }
+
+  // A post head (finial, cap, roof, bracket) cut out of a finished layer, so it can be drawn back
+  // over the clouds, rays and stars: the shape comes from painting the post, the pixels from the
+  // layer itself (vignette and all), on the layer's own device-pixel grid.
+  function paintHead(P, mi) {
+    const L = layers[mi], sx = L.width / G.W, sy = L.height / G.H, b = P.head;
+    const px0 = Math.max(0, Math.floor(b.x * sx)), py0 = Math.max(0, Math.floor(b.y * sy));
+    const pw = Math.min(L.width, Math.ceil((b.x + b.w) * sx)) - px0, ph = Math.min(L.height, Math.ceil((b.y + b.h) * sy)) - py0;
+    const c = document.createElement('canvas'); c.width = Math.max(1, pw); c.height = Math.max(1, ph);
+    const x = c.getContext('2d');
+    x.setTransform(sx, 0, 0, sy, -px0, -py0);
+    x.beginPath(); x.rect(b.x, b.y, b.w, b.h); x.clip();
+    drawPost(x, P, G.H, MOODS[mi]);
+    x.setTransform(1, 0, 0, 1, 0, 0);
+    x.globalCompositeOperation = 'source-in';
+    x.drawImage(L, px0, py0, c.width, c.height, 0, 0, c.width, c.height);
+    return { c, x: px0 / sx, y: py0 / sy, w: c.width / sx, h: c.height / sy };
   }
 
   // the storm lantern: brass cap and fount, a warm glass globe in a wire guard (one sprite, it sways live)
@@ -632,6 +791,7 @@
       pts.forEach(p => { if (p[1] < top) top = p[1]; });
       geo.pines[k].forEach(p => { if (p.y - p.h < top) top = p.y - p.h; });
     });
+    geo.towers.forEach(T => { if (T.seen && T.tipY < top) top = T.tipY; });
     rimTop = Math.max(0, Math.floor(top - 4));
     const o = G.offscreen(W, H - rimTop, 1), x = o.x;
     x.translate(0, -rimTop);
@@ -647,20 +807,28 @@
       x.globalCompositeOperation = 'destination-out'; x.beginPath(); ridgePath(x, pts, W, H, 0, 0); x.fill();
       x.globalCompositeOperation = 'source-over'; x.fillStyle = white(a); x.beginPath(); ridgePath(x, pts, W, H, 0, 0); x.fill();
       x.globalCompositeOperation = 'destination-out'; x.beginPath(); ridgePath(x, pts, W, H, 0, ro); x.fill();
+      // a lookout someone can see catches the strike on its upper edges too
+      if (k === 0) geo.towers.forEach(T => {
+        if (!T.seen) return;
+        const oo = G.clamp(T.ts * 0.03, 0.7, 1.6);
+        x.globalCompositeOperation = 'destination-out'; towerParts(x, T, pts, '#000', 0, 0);
+        x.globalCompositeOperation = 'source-over'; towerParts(x, T, pts, white(0.7), 0, 0);
+        x.globalCompositeOperation = 'destination-out'; towerParts(x, T, pts, '#000', oo * 0.6, oo);
+      });
     });
     // the lodge posts stand in front of the ridges
     x.globalCompositeOperation = 'destination-out';
-    geo.posts.forEach(p => x.fillRect(p.x - p.w * 0.16, rimTop, p.w * 1.32, H));
+    geo.posts.forEach(p => p.boxes.forEach(b => x.fillRect(b.x, Math.max(rimTop, b.y), b.w, b.y + b.h - Math.max(rimTop, b.y))));
     x.globalCompositeOperation = 'source-over';
     return o.c;
   }
 
-  // the sky flash as a tiny vertical ramp stretched over the screen: it fades out low over the
-  // ridges instead of stopping at a hard edge, with no per-frame gradient
-  function paintFlashRamp(rgb) {
+  // a tiny vertical alpha ramp stretched over the screen (the sky flash, the light fan's fade):
+  // it fades out low over the ridges instead of stopping at a hard edge, with no per-frame gradient
+  function paintRamp(rgb, fade) {
     const o = G.offscreen(2, 128, 1), x = o.x;
     for (let i = 0; i < 128; i++) {
-      const t = (i + 0.5) / 128, a = G.clamp(1 - (t - 0.7) / 0.25, 0, 1);      // full to 0.7H, smooth fade by 0.95H
+      const a = fade((i + 0.5) / 128);
       x.fillStyle = `rgba(${rgb},${(a * a * (3 - 2 * a)).toFixed(3)})`; x.fillRect(0, i, 2, 1);
     }
     return o.c;
@@ -679,9 +847,13 @@
     return o.c;
   }
 
+  // a cloud: puffs laid out in a 360x150 box, on a canvas padded by CLOUD_PAD all round so no
+  // puff is cut off (drawn shifted back by the padding, so the cloud sits where it always did)
+  const CLOUD_PAD = 25;
   function paintCloud(v, color) {
-    const r = mulberry(100 + v), o = G.offscreen(360, 150, 1), x = o.x;
+    const r = mulberry(100 + v), P = CLOUD_PAD, o = G.offscreen(360 + P * 2, 210, 1), x = o.x;   // puffs reach y -20..180
     const puff = FX.softSprite(color);
+    x.translate(P, P);
     for (let i = 0; i < 16; i++) {
       const px = 50 + r() * 260, py = 80 + (r() - 0.5) * 50 * (1 - Math.abs(px - 180) / 180), s = 30 + r() * 45;
       x.globalAlpha = 0.45 + r() * 0.4; x.drawImage(puff, px - s, py - s, s * 2, s * 2);
@@ -693,12 +865,18 @@
   Scene.lightning = (strong) => {
     const W = G.W, H = G.H;
     let x1 = G.rand(W * 0.1, W * 0.9), x2 = x1 + G.rand(-W * 0.15, W * 0.15), y2 = H * G.rand(0.3, 0.55);
-    const hit = rod && Math.random() < (strong ? 0.35 : 0.2);
-    if (hit) { x2 = rod.x; y2 = rod.y; x1 = rod.x + G.rand(-W * 0.12, W * 0.12); }     // the rod on the summit catches it
-    FX.bolt(x1, -10, x2, y2, { layer: -1, width: strong ? 3 : 2, dur: 0.5, color: G.S.mood > 0.5 ? '#ffe7a8' : '#bfe4ff' });
+    // a lookout's rod catches some strikes, but only a rod that can be seen (none in portrait)
+    const hit = rods.length && Math.random() < (strong ? 0.35 : 0.2) ? rods[(Math.random() * rods.length) | 0] : null;
+    let rough;
+    if (hit) {
+      // it comes down through the open sky above the rod, not out from behind the panels
+      const [lo, hi] = hit.sky, m = Math.min((hi - lo) * 0.2, hit.s * 0.5);
+      x2 = hit.x; y2 = hit.y; x1 = G.rand(lo + m, hi - m); rough = Math.max(4, (hi - lo) * 0.18);
+    }
+    FX.bolt(x1, -10, x2, y2, { layer: -1, width: strong ? 3 : 2, dur: 0.5, rough, color: G.S.mood > 0.5 ? '#ffe7a8' : '#bfe4ff' });
     const calm = G.settings.reducedMotion ? 0.3 : 1, a = (strong ? 0.5 : 0.28) * calm;
     skyFlash = Math.max(skyFlash, FX.flashOk() ? a : Math.min(a, 0.12));
-    rodK = Math.max(rodK, (hit ? 1 : 0.55) * calm);
+    for (const r of rods) r.k = Math.max(r.k, (r === hit ? 1 : 0.55) * calm);     // the others answer the sky
   };
 
   Scene.draw = (ctx, dt) => {
@@ -723,32 +901,42 @@
         ctx.drawImage(spr, s.x - z, s.y - z, z * 2, z * 2);
       }
     }
-    // light fan from above
-    if (rays && G.Q.level > 0) {
+    // light fan from above: turned into a small overlay, faded out over the ridges by a baked
+    // ramp, then laid over the sky in one upscaled copy
+    if (rays && raysOver && G.Q.level > 0) {
+      const o = raysOver, x = o.x, rs = raysSize, oh = H * RAY_H;
+      x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, o.c.width, o.c.height);
+      x.setTransform(RAY_S, 0, 0, RAY_S, 0, 0);
+      x.save(); x.translate(W / 2, -H * 0.12); x.rotate(t * 0.035); x.drawImage(rays, -rs / 2, -rs / 2, rs, rs); x.restore();
+      x.globalCompositeOperation = 'destination-in'; x.drawImage(raysFade, 0, 0, W, oh);
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.05 + mood * 0.05 + Math.sin(t * 0.6) * 0.012;
-      const rs = raysSize;
-      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H * 0.7); ctx.clip();
-      ctx.translate(W / 2, -H * 0.12); ctx.rotate(t * 0.035);
-      ctx.drawImage(rays, -rs / 2, -rs / 2, rs, rs); ctx.restore();
+      ctx.drawImage(o.c, 0, 0, W, oh);
     }
     ctx.globalCompositeOperation = 'source-over';
     // drifting clouds
     for (const c of clouds) {
       c.x += dt * 9 * c.d * (1 + mood) * (1 + stormK * 2);
       if (c.x > W + 320) c.x = -360;
-      const w = 360 * c.s * (W / 1400 + 0.4), h = 150 * c.s * (W / 1400 + 0.4);
-      if (mood < 1) { ctx.globalAlpha = c.a * (1 - mood); ctx.drawImage(cloudSprites[0][c.v], c.x, c.y, w, h); }
-      if (mood > 0) { ctx.globalAlpha = c.a * mood; ctx.drawImage(cloudSprites[1][c.v], c.x, c.y, w, h); }
+      const k = c.s * (W / 1400 + 0.4), spr = cloudSprites[0][c.v], w = spr.width * k, h = spr.height * k, cx = c.x - CLOUD_PAD * k, cy = c.y - CLOUD_PAD * k;
+      if (mood < 1) { ctx.globalAlpha = c.a * (1 - mood); ctx.drawImage(spr, cx, cy, w, h); }
+      if (mood > 0) { ctx.globalAlpha = c.a * mood; ctx.drawImage(cloudSprites[1][c.v], cx, cy, w, h); }
     }
     ctx.globalAlpha = 1;
-    // the posts stand in front of the sky: copy their shafts back over stars, rays and clouds
+    // sky lightning is far off: behind the posts and lanterns, in front of the clouds
+    FX.drawBolts(ctx, -1);
+    // the posts stand in front of the sky: copy their shafts back over stars, rays, clouds and bolts, then
+    // their heads (finial, cap, roof and bracket) from the cut-outs
     if (shafts.length) {
       const d = layerDpr, lh = layers[0].height;
       for (const p of shafts) {
         const sh = Math.min(p.h * d, lh - p.y * d), dh = sh / d;     // stay inside the layer when H × DPR is fractional
         if (mood < 1) ctx.drawImage(layers[0], p.x * d, p.y * d, p.w * d, sh, p.x, p.y, p.w, dh);
         if (mood > 0) { ctx.globalAlpha = mood; ctx.drawImage(layers[1], p.x * d, p.y * d, p.w * d, sh, p.x, p.y, p.w, dh); ctx.globalAlpha = 1; }
+      }
+      for (const [a, b] of heads) {
+        if (mood < 1) ctx.drawImage(a.c, a.x, a.y, a.w, a.h);
+        if (mood > 0) { ctx.globalAlpha = mood; ctx.drawImage(b.c, b.x, b.y, b.w, b.h); ctx.globalAlpha = 1; }
       }
     }
 
@@ -769,11 +957,12 @@
       ctx.globalCompositeOperation = 'source-over';
       skyFlash = Math.max(0, skyFlash - dt * 2.5);
     }
-    // the rod flares and crackles when the sky fires
-    if (rod && rodK > 0.01) {
-      const s = rod.s, R = s * (0.3 + 0.45 * rodK);
+    // a visible rod flares and crackles when the sky fires
+    for (const rod of rods) {
+      if (rod.k <= 0.01) continue;
+      const s = rod.s, R = s * (0.3 + 0.45 * rod.k);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = rodK;
+      ctx.globalAlpha = rod.k;
       ctx.drawImage(FX.glowSprite(mood > 0.5 ? '#ffe7a8' : '#bfe4ff'), rod.x - R, rod.y - R, R * 2, R * 2);
       ctx.strokeStyle = mood > 0.5 ? '#fff4d0' : '#e6f4ff'; ctx.lineWidth = Math.max(0.8, s * 0.025); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.beginPath();
@@ -783,7 +972,7 @@
       }
       ctx.stroke();
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-      rodK = Math.max(0, rodK - dt * 3);
+      rod.k = Math.max(0, rod.k - dt * 3);
     }
 
     // storm lanterns: sway harder as the storm builds; the warm edge light flickers with the flame
@@ -814,7 +1003,6 @@
         color: mood > 0.5 ? '#ffcf6a' : '#e8b8ff', drag: 0 });
     }
     FX.draw(ctx, -1);
-    FX.drawBolts(ctx, -1);
     // the world darkens while the reels tease a feature
     suspenseK += ((S.suspense ? 1 : 0) - suspenseK) * Math.min(1, dt * 3);
     if (suspenseK > 0.01) { ctx.fillStyle = `rgba(4,1,12,${0.38 * suspenseK})`; ctx.fillRect(-W, -H, W * 3, H * 3); }

@@ -55,13 +55,13 @@ const WORK = path.resolve(arg('--work', path.join(os.tmpdir(), 'gos-render-sfx')
 const ENCODE = !args.includes('--no-encode');
 const CALIBRATE = args.includes('--calibrate');
 const SR = SFX.SR, GAP = 0.06, TARGET_STORE_DB = -1;
-// cutoff: the encoder's own lowpass sits at what the recipes contain (ui is cut at 7.5 kHz, world/fs at 11 kHz).
+// cutoff: the encoder's own lowpass sits where the recipes stop (ui is cut at 7.5 kHz, world/fs at 11 kHz).
 // q: the stingers (fs) are encoded at q4, not q5: since they end in their own
 // tails (~2 s tier beds, a 2.5 s finale) q5 would put the .ogg set ~40 KB over
 // its ~450 KB budget. They are long, dense and play over the music on the
 // stinger bus, the most forgiving material here; the short, transient world
 // and UI sounds keep q5/q4.
-const BUSES = { ui: { channels: 1, q: 4, cutoff: 11000 }, world: { channels: 2, q: 5, cutoff: 11500 }, fs: { channels: 2, q: 4, cutoff: 11000 } };
+const BUSES = { ui: { channels: 1, q: 4, cutoff: 11000 }, world: { channels: 2, q: 5, cutoff: 11000 }, fs: { channels: 2, q: 4, cutoff: 11000 } };
 const AAC_KBPS = 128;
 const VERSION = 1;
 
@@ -279,7 +279,7 @@ function format(j) {
   const line = o => JSON.stringify(o);
   const block = (o, ind) => '{\n' + Object.entries(o).map(([k, v]) => ind + JSON.stringify(k) + ': ' + line(v)).join(',\n') + '\n' + ind.slice(2) + '}';
   return '{\n' +
-    `  "version": ${j.version},\n  "hash": ${JSON.stringify(j.hash)},\n  "sampleRate": ${j.sampleRate},\n  "gap": ${j.gap},\n` +
+    `  "version": ${j.version},\n  "hash": ${JSON.stringify(j.hash)},\n  "sampleRate": ${j.sampleRate},\n  "gap": ${j.gap},\n  "decodedBytes": ${j.decodedBytes},\n` +
     `  "files": ${block(j.files, '    ')},\n  "slots": ${block(j.slots, '    ')},\n  "recipes": ${block(j.recipes, '    ')}\n}\n`;
 }
 
@@ -349,7 +349,7 @@ async function previews(slots) {
   }
   // The Storm Breaks: the H6 timeline (t = 0 at scatterFanfare), then the FS family
   {
-    const o = seq(22.0), BREAK = 2.996, E8 = 0.2344, S32 = 0.0586;
+    const o = seq(29.0), BREAK = 2.996, E8 = 0.2344, S32 = 0.0586;
     ['G4', 'Bb4', 'D5', 'G5'].forEach((nm, i) => { put(o, 'scatter.lock#0', i * 0.12); put(o, 'tine.' + nm, i * 0.12, -4); });
     put(o, 'fs.charge#0', 0.6);
     put(o, 'fs.break#0', BREAK); put(o, 'fs.horn.A4#0', BREAK + E8); put(o, 'fs.horn.D5#0', BREAK + 2 * E8);
@@ -359,8 +359,8 @@ async function previews(slots) {
     let t = 5.6; put(o, 'fs.retrigger#0', t); t += 1.3;
     for (let v = 0; v < 5; v++) { put(o, 'fs.milestone#' + v, t); t += 0.95; }
     put(o, 'fs.last#0', t); t += 0.9;
-    put(o, 'fs.outro#0', t); t += 2.4;
-    for (let k = 0; k < 4; k++) { put(o, 'tier.' + k, t); t += 2.4; }
+    put(o, 'fs.outro#0', t); t += 2.6;
+    for (let k = 0; k < 4; k++) { put(o, 'tier.' + k, t); t += 2.6; }
     put(o, 'maxwin#0', t);
     out.push(['storm-breaks', o]);
     o.marks = { BREAK };
@@ -379,7 +379,7 @@ async function previews(slots) {
     // music at about −23 LUFS (v10 target): base −18.7 LUFS source -> −4.3 dB; feature −12.9 -> −10.1 dB
     await ffmpeg(['-y', '-loglevel', 'error', '-i', storm, '-ss', '20', '-i', base, '-i', feat, '-filter_complex',
       '[1:a]aresample=48000,atrim=0:1.0,volume=-4.3dB,lowpass=f=900,afade=t=out:st=0.6:d=0.4[b];' +
-      '[2:a]aresample=48000,atrim=0:21.4,volume=-10.1dB,adelay=600|600[f];' +
+      '[2:a]aresample=48000,atrim=0:28.4,volume=-10.1dB,adelay=600|600[f];' +
       '[0:a][b][f]amix=inputs=3:normalize=0:duration=first[m]', '-map', '[m]', '-c:a', 'pcm_f32le', mixed]);
     console.log(`preview storm-breaks-music: the sequence over the soundtracks -> ${path.relative(process.cwd(), mixed)}`);
   }
