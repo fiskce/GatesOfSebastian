@@ -52,7 +52,7 @@
   // brass shares the frame's gold; at dusk it sits in violet ambient light
   MOODS.forEach(M => { M.brass = GOLD.map(c => M.ambient ? mix(c, M.ambient, 0.24) : c); });
 
-  let layers = [null, null], rays = null, raysSize = 0, raysOver = null, raysFade = null, cloudSprites = [[], []];
+  let layers = [null, null], rays = null, raysSize = 0, cloudSprites = [[], []];
   let rimMask = null, rimTop = 0, lantern = null, flashRamps = null;
   let dirty = true, lastBuild = -1, layerDpr = 1, geo = null;
   let stars = [], clouds = [], lanterns = [], shafts = [], heads = [], rods = [];
@@ -72,14 +72,12 @@
     layerDpr = G.DPR;
     geo = geometry(W, H);
     layers = [paint(0, W, H), paint(1, W, H)];
-    // the post heads stand in front of the sky: cut-outs of the finished layers, drawn over clouds and rays
+    // the post heads stand in front of the sky: sprites drawn back over the clouds, rays and bolts
     heads = geo.posts.map(p => [0, 1].map(mi => paintHead(p, mi)));
     rimMask = G.Q.level > 0 ? paintRimMask(W, H) : null;     // lean devices keep the plain sky flash
     raysSize = Math.max(W, H) * 1.9;
     // the fan is never drawn at the lowest quality, so it is not baked there either
     rays = G.Q.level > 0 ? paintRays(raysSize) : null;
-    raysOver = rays ? G.offscreen(W, H * RAY_H, RAY_S) : null;
-    raysFade = raysFade || paintRamp('255,255,255', RAY_FADE);
     cloudSprites = [[0, 1, 2].map(v => paintCloud(v, MOODS[0].cloud)), [0, 1, 2].map(v => paintCloud(v, MOODS[1].cloud))];
     lantern = geo.posts.length ? paintLantern(geo.cw) : null;
     flashRamps = flashRamps || ['170,200,255', '255,220,150'].map(c => paintRamp(c, FLASH_FADE));
@@ -103,10 +101,9 @@
   const capY = () => G.H * 0.16;
   // lodge posts + lanterns only where the layout leaves room for them (wide screens)
   const hasPosts = () => !G.L.portrait && G.L.left && G.L.left.x > colW() * 1.9 + G.W * 0.008;
-  // the light fan: a low-res overlay (scale RAY_S) over the top RAY_H of the screen, fading out
-  // over the ridges instead of stopping at a hard edge
-  const RAY_S = 0.35, RAY_H = 0.8;
-  const RAY_FADE = t => G.clamp(1 - (t - 0.68) / 0.32, 0, 1);       // of RAY_H: full to 0.54H, gone by 0.8H
+  // the light fan fades out over the ridges in steps instead of stopping at a hard edge: full
+  // strength to 0.54H, then a sixth less every 0.05H (each step is about a level, under the grain)
+  const RAY_STEPS = [[0, 0.54, 1], [0.54, 0.59, 5 / 6], [0.59, 0.64, 4 / 6], [0.64, 0.69, 3 / 6], [0.69, 0.74, 2 / 6], [0.74, 0.79, 1 / 6]];
   const FLASH_FADE = t => G.clamp(1 - (t - 0.7) / 0.25, 0, 1);      // full to 0.7H, gone by 0.95H
 
   const inBox = (b, px, py, m) => px > b.x - m && px < b.x + b.w + m && py > b.y - m && py < b.y + b.h + m;
@@ -176,7 +173,7 @@
     towers.forEach(T => {
       far.forEach(p => { const w = G.clamp(1 - (Math.abs(p[0] - T.x) - T.ts * 0.7) / (T.ts * 0.9), 0, 1); p[1] += (T.y - p[1]) * w * w; });
       T.box = { x: T.x - T.ts * 0.62, y: T.tipY - 2, w: T.ts * 1.36, h: T.y - T.tipY + 2 };
-      // the open column of sky above the rod (between the posts and the panels), for its strikes
+      // the open strip of sky above the rod (between the posts and the panels), for its strikes
       const clear = px => px > 0 && px < W && !avoid.some(b => px > b.x && px < b.x + b.w && b.y < T.tipY);
       let lo = T.x, hi = T.x;
       while (clear(lo - 2)) lo -= 2;
@@ -300,11 +297,14 @@
     // carved lodge posts at the edges
     geo.posts.forEach(p => drawPost(x, p, H, M));
 
-    // vignette
+    vignette(x, W, H);
+    return o.c;
+  }
+
+  function vignette(x, W, H) {
     const vg = x.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.35, W / 2, H * 0.5, Math.max(W, H) * 0.85);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.55)');
     x.fillStyle = vg; x.fillRect(0, 0, W, H);
-    return o.c;
   }
 
   // the open sky above a crest (dy pixels below it), as a closed path
@@ -720,21 +720,21 @@
     x.restore();
   }
 
-  // A post head (finial, cap, roof, bracket) cut out of a finished layer, so it can be drawn back
-  // over the clouds, rays and stars: the shape comes from painting the post, the pixels from the
-  // layer itself (vignette and all), on the layer's own device-pixel grid.
+  // A post head (finial, cap, roof, bracket) as its own sprite, so it can be drawn back over the
+  // clouds, rays and stars: painted again on the layer's device-pixel grid with the layer's
+  // vignette, so it matches the layer (reading the pixels back from the big layer would
+  // stall the GPU for a full readback).
   function paintHead(P, mi) {
-    const L = layers[mi], sx = L.width / G.W, sy = L.height / G.H, b = P.head;
+    const L = layers[mi], W = G.W, H = G.H, sx = L.width / W, sy = L.height / H, b = P.head;
     const px0 = Math.max(0, Math.floor(b.x * sx)), py0 = Math.max(0, Math.floor(b.y * sy));
     const pw = Math.min(L.width, Math.ceil((b.x + b.w) * sx)) - px0, ph = Math.min(L.height, Math.ceil((b.y + b.h) * sy)) - py0;
     const c = document.createElement('canvas'); c.width = Math.max(1, pw); c.height = Math.max(1, ph);
     const x = c.getContext('2d');
     x.setTransform(sx, 0, 0, sy, -px0, -py0);
     x.beginPath(); x.rect(b.x, b.y, b.w, b.h); x.clip();
-    drawPost(x, P, G.H, MOODS[mi]);
-    x.setTransform(1, 0, 0, 1, 0, 0);
-    x.globalCompositeOperation = 'source-in';
-    x.drawImage(L, px0, py0, c.width, c.height, 0, 0, c.width, c.height);
+    drawPost(x, P, H, MOODS[mi]);
+    x.globalCompositeOperation = 'source-atop';
+    vignette(x, W, H);
     return { c, x: px0 / sx, y: py0 / sy, w: c.width / sx, h: c.height / sy };
   }
 
@@ -818,7 +818,7 @@
     });
     // the lodge posts stand in front of the ridges
     x.globalCompositeOperation = 'destination-out';
-    geo.posts.forEach(p => p.boxes.forEach(b => x.fillRect(b.x, Math.max(rimTop, b.y), b.w, b.y + b.h - Math.max(rimTop, b.y))));
+    geo.posts.forEach(p => p.boxes.forEach(b => { const y0 = Math.max(rimTop, b.y); if (b.y + b.h > y0) x.fillRect(b.x, y0, b.w, b.y + b.h - y0); }));
     x.globalCompositeOperation = 'source-over';
     return o.c;
   }
@@ -847,18 +847,21 @@
     return o.c;
   }
 
-  // a cloud: puffs laid out in a 360x150 box, on a canvas padded by CLOUD_PAD all round so no
-  // puff is cut off (drawn shifted back by the padding, so the cloud sits where it always did)
-  const CLOUD_PAD = 25;
+  // a cloud: puffs laid out around a 360x150 box, on a canvas cut to the puffs' own bounds (a
+  // fixed box clipped some of them flat); ox/oy place it where the box would have been
   function paintCloud(v, color) {
-    const r = mulberry(100 + v), P = CLOUD_PAD, o = G.offscreen(360 + P * 2, 210, 1), x = o.x;   // puffs reach y -20..180
-    const puff = FX.softSprite(color);
-    x.translate(P, P);
+    const r = mulberry(100 + v), puffs = [];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let i = 0; i < 16; i++) {
       const px = 50 + r() * 260, py = 80 + (r() - 0.5) * 50 * (1 - Math.abs(px - 180) / 180), s = 30 + r() * 45;
-      x.globalAlpha = 0.45 + r() * 0.4; x.drawImage(puff, px - s, py - s, s * 2, s * 2);
+      puffs.push({ px, py, s, a: 0.45 + r() * 0.4 });
+      x0 = Math.min(x0, px - s); y0 = Math.min(y0, py - s); x1 = Math.max(x1, px + s); y1 = Math.max(y1, py + s);
     }
-    return o.c;
+    x0 = Math.floor(x0) - 1; y0 = Math.floor(y0) - 1;
+    const o = G.offscreen(Math.ceil(x1) + 1 - x0, Math.ceil(y1) + 1 - y0, 1), x = o.x, puff = FX.softSprite(color);
+    x.translate(-x0, -y0);
+    for (const p of puffs) { x.globalAlpha = p.a; x.drawImage(puff, p.px - p.s, p.py - p.s, p.s * 2, p.s * 2); }
+    return { c: o.c, ox: x0, oy: y0 };
   }
 
   // sky lightning — behind the board; free spins storms are far more frequent
@@ -901,26 +904,26 @@
         ctx.drawImage(spr, s.x - z, s.y - z, z * 2, z * 2);
       }
     }
-    // light fan from above: turned into a small overlay, faded out over the ridges by a baked
-    // ramp, then laid over the sky in one upscaled copy
-    if (rays && raysOver && G.Q.level > 0) {
-      const o = raysOver, x = o.x, rs = raysSize, oh = H * RAY_H;
-      x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, o.c.width, o.c.height);
-      x.setTransform(RAY_S, 0, 0, RAY_S, 0, 0);
-      x.save(); x.translate(W / 2, -H * 0.12); x.rotate(t * 0.035); x.drawImage(rays, -rs / 2, -rs / 2, rs, rs); x.restore();
-      x.globalCompositeOperation = 'destination-in'; x.drawImage(raysFade, 0, 0, W, oh);
+    // light fan from above: one clipped copy per fade step (together they cover what the single
+    // hard-edged copy did, so the cost per frame stays the same)
+    if (rays && G.Q.level > 0) {
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.05 + mood * 0.05 + Math.sin(t * 0.6) * 0.012;
-      ctx.drawImage(o.c, 0, 0, W, oh);
+      const a = 0.05 + mood * 0.05 + Math.sin(t * 0.6) * 0.012, rs = raysSize;
+      for (const [y0, y1, k] of RAY_STEPS) {
+        ctx.save(); ctx.beginPath(); ctx.rect(0, H * y0, W, H * (y1 - y0)); ctx.clip();
+        ctx.globalAlpha = a * k;
+        ctx.translate(W / 2, -H * 0.12); ctx.rotate(t * 0.035);
+        ctx.drawImage(rays, -rs / 2, -rs / 2, rs, rs); ctx.restore();
+      }
     }
     ctx.globalCompositeOperation = 'source-over';
     // drifting clouds
     for (const c of clouds) {
       c.x += dt * 9 * c.d * (1 + mood) * (1 + stormK * 2);
       if (c.x > W + 320) c.x = -360;
-      const k = c.s * (W / 1400 + 0.4), spr = cloudSprites[0][c.v], w = spr.width * k, h = spr.height * k, cx = c.x - CLOUD_PAD * k, cy = c.y - CLOUD_PAD * k;
-      if (mood < 1) { ctx.globalAlpha = c.a * (1 - mood); ctx.drawImage(spr, cx, cy, w, h); }
-      if (mood > 0) { ctx.globalAlpha = c.a * mood; ctx.drawImage(cloudSprites[1][c.v], cx, cy, w, h); }
+      const k = c.s * (W / 1400 + 0.4), sp = cloudSprites[0][c.v], w = sp.c.width * k, h = sp.c.height * k, cx = c.x + sp.ox * k, cy = c.y + sp.oy * k;
+      if (mood < 1) { ctx.globalAlpha = c.a * (1 - mood); ctx.drawImage(sp.c, cx, cy, w, h); }
+      if (mood > 0) { ctx.globalAlpha = c.a * mood; ctx.drawImage(cloudSprites[1][c.v].c, cx, cy, w, h); }
     }
     ctx.globalAlpha = 1;
     // sky lightning is far off: behind the posts and lanterns, in front of the clouds
