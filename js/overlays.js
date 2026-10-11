@@ -20,7 +20,7 @@
   // an amount being counted up on screen right now (big win, feature total): { shown, to }
   O.counting = () => {
     const it = O.items.find(i => i.block && (i.amount != null || i.total != null) && i.shown != null);
-    return it ? { shown: it.shown, to: it.amount != null ? it.amount : it.total } : null;
+    return it ? { shown: it.shown, to: it.amount != null ? it.amount : it.total, big: it.amount != null } : null;
   };
 
   let raysC = null;
@@ -128,7 +128,7 @@
     const dur = 2.4 + top * 1.6, hold = (autoMs || 2600) / 1000;
     const it = { block: true, t: 0, shown: 0, tier: 0, tickT: 0, phase: 'count', closeT: 0, tierT: 0, amount };
     // the music steps back (about -8 dB) under a bed for the tier, rather than dropping out
-    AudioEngine.duck(0.4, dur + hold); it.bed = AudioEngine.play('tier.0');
+    AudioEngine.duck(0.4, (dur + hold) / O.rate()); it.bed = AudioEngine.play('tier.0');
     G.Seb.cut = it; G.Seb.cheer(1); G.Seb.say('big');
     const finish = () => {
       if (top > it.tier) it.tierT = it.t;      // jumping ahead still stamps the final tier
@@ -150,12 +150,14 @@
         if (it.tickT <= 0) { it.tickT = 0.07; AudioEngine.play('count.tick', { gain: 0.8 }); }
         if (Math.random() < dt * (18 + it.tier * 10)) FX.coins(G.W / 2 + G.rand(-G.W * 0.2, G.W * 0.2), G.H + 20, 1, 40, G.H * 1.25, 3);
         if (p >= 1) finish();
-      } else if (it.phase === 'hold' && it.t - it.closeT > hold) { it.phase = 'out'; it.closeT = it.t; }
+      } else if (it.phase === 'hold' && it.t - it.closeT > hold) out();
       else if (it.phase === 'out' && it.t - it.closeT > 0.35) { it.dead = true; G.Seb.cut = null; res(); }
     };
+    // leaving gives the music back straight away, however early the tap came
+    const out = () => { it.phase = 'out'; it.closeT = it.t; AudioEngine.unduck(0.5); };
     it.skip = () => {
       if (it.phase === 'count') finish();
-      else if (it.phase === 'hold' && it.t - it.closeT > 0.25) { it.phase = 'out'; it.closeT = it.t; }
+      else if (it.phase === 'hold' && it.t - it.closeT > 0.25) out();
     };
     it.draw = ctx => {
       const a = it.phase === 'out' ? 1 - (it.t - it.closeT) / 0.35 : fadeIn(it.t);
@@ -193,9 +195,10 @@
   // ---------------- free spins intro ----------------
   O.fsIntro = (award, autoMs) => new Promise(res => {
     const it = { block: true, t: 0, phase: 'in', closeT: 0 };
-    // the award counts in on brass shell clicks (32nds at the feature's 128 BPM), climbing the F pentatonic
-    const t0 = AudioEngine.now() + 0.25, LADDER = [0, 2, 4, 7, 9, 12];
-    for (let k = 0; k < award; k++) AudioEngine.play('fs.award.click', { when: t0 + k * 0.0586, rate: Math.pow(2, LADDER[Math.floor(k * LADDER.length / award)] / 12) });
+    // the award counts in on brass shell clicks (32nds at the feature's 128 BPM), climbing the F pentatonic;
+    // the card runs on the presentation clock, so under turbo the clicks keep pace with the digits
+    const r = O.rate(), t0 = AudioEngine.now() + 0.25 / r, LADDER = [0, 2, 4, 7, 9, 12];
+    for (let k = 0; k < award; k++) AudioEngine.play('fs.award.click', { when: t0 + k * 0.0586 / r, rate: Math.pow(2, LADDER[Math.floor(k * LADDER.length / award)] / 12) });
     const close = () => { if (it.phase === 'in') { it.phase = 'out'; it.closeT = it.t; AudioEngine.play('ui.close'); } };
     it.skip = () => { if (it.t > 0.5) close(); };
     it.update = () => {
@@ -242,11 +245,11 @@
   // ---------------- free spins outro ----------------
   O.fsOutro = (total, spins, bet, autoMs) => new Promise(res => {
     const it = { block: true, t: 0, phase: 'in', closeT: 0, shown: 0, total };
-    AudioEngine.duck(0.4, 4); AudioEngine.play('fs.outro');
+    AudioEngine.duck(0.4, 4 / O.rate()); AudioEngine.play('fs.outro');
     if (total / bet >= 15) G.Seb.cheer(1.2);
     const countDur = total > 0 ? 1.8 : 0.01;
     let ticked = 0;
-    const close = () => { if (it.phase === 'in') { it.phase = 'out'; it.closeT = it.t; } };
+    const close = () => { if (it.phase === 'in') { it.phase = 'out'; it.closeT = it.t; AudioEngine.unduck(0.5); } };
     it.skip = () => { if (it.t > 0.6) close(); };
     it.update = () => {
       if (it.phase === 'in' && it.t > 0.4 + autoMs / 1000) close();

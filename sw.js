@@ -4,15 +4,15 @@
  *
  * Scope is this folder, so it also works when the game is served from a
  * sub-path (e.g. fiskce.com/gatesofsebastianv9/). Cache Storage is shared by
- * the whole origin, so this worker only ever touches this game's caches ('gos<N>-core/-media').
+ * the whole origin, so this worker only ever touches this game's caches ('gos<N>-core-<n>/-media-<n>').
  *  - code (html/js/css/json): network first, cache as fallback -> online
  *    players always get the latest build
  *  - art, fonts, sounds: cache first (the .m4a sound sheets Safari uses are
  *    cached on first use; offline without them, the recipes render the same sounds)
  * Bump VERSION on every release.
  */
-const VERSION = 'gos10-core-1';
-const MEDIA = 'gos10-media';
+const VERSION = 'gos10-core-2';
+const MEDIA = VERSION.replace('-core-', '-media-');      // media turns over with each release too, so a sheet never outlives its sfx.json
 const CORE = [
   './',
   'manifest.json',

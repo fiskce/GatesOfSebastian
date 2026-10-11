@@ -34,7 +34,7 @@ const AudioEngine = (() => {
   if (!ctx) {
     const noop = () => {}, voice = { stop: noop };
     return { play: () => voice, playAt: () => voice, anticipation: () => voice, startMusic: noop, stopMusic: noop, setVolume: noop,
-      setSfx: noop, setSfxVolume: noop, setMusicVolume: noop, resume: noop, duck: noop, duckFor: noop, suspense: noop, musicMode: noop,
+      setSfx: noop, setSfxVolume: noop, setMusicVolume: noop, resume: noop, suspend: noop, duck: noop, duckFor: noop, unduck: noop, suspense: noop, musicMode: noop,
       now: () => 0, marks: () => ({}), debug: () => ({ voices: [] }), trackTime: () => null, has: () => false, length: (n, f) => f || 0, ready: Promise.resolve(), ctx: null, musicIn: null,
       get musicOn() { return false; }, get musicTrack() { return null; } };
   }
@@ -80,6 +80,7 @@ const AudioEngine = (() => {
   let sfxOn = true;
 
   function resume() { if (ctx.state === 'suspended') ctx.resume(); }
+  function suspend() { if (ctx.state === 'running') ctx.suspend(); }
   const ramp = (p, v, tc) => { const t = ctx.currentTime; p.cancelScheduledValues(t); p.setValueAtTime(p.value, t); p.setTargetAtTime(v, t, tc); };
   function setVolume(v) { ramp(master.gain, Math.max(0, Math.min(1, v)), 0.02); }
   function setSfxVolume(v) { ramp(sfxVol.gain, Math.max(0, Math.min(1, v)), 0.02); }
@@ -116,9 +117,12 @@ const AudioEngine = (() => {
       const meta = await res.json(), fmt = vorbis ? 'ogg' : 'm4a';
       const bufs = {};
       await Promise.all(Object.keys(meta.files).map(async k => {
-        const f = meta.files[k], r = await fetch(f[fmt] || f.ogg);
+        const f = meta.files[k], use = f[fmt] ? fmt : 'ogg', r = await fetch(f[use]);
         if (!r.ok) throw new Error(r.status);
-        bufs[k] = await ctx.decodeAudioData(await r.arrayBuffer());
+        const ab = await r.arrayBuffer(), want = f.bytes && f.bytes[use];
+        // a sheet from another release (a stale cache) would play the wrong sounds at these offsets: use the recipes instead
+        if (want && ab.byteLength !== want) throw new Error('sheet ' + k + ' is not the one sfx.json describes');
+        bufs[k] = await ctx.decodeAudioData(ab);
       }));
       // AAC decoders may or may not skip the encoder's priming samples: measure one shift per sheet on its
       // first slot (each sheet opens with silence). Vorbis decodes sample-exact, so its offsets are used as they are.
@@ -140,8 +144,9 @@ const AudioEngine = (() => {
         busOf[name] = sheetBus[s.file] || 'world';
       });
       return true;
-    } catch (e) { return false; }
+    } catch (e) { sheetErr = String((e && e.message) || e); return false; }
   }
+  let sheetErr = null;
   // how far a decoded sheet sits from where it was written (seconds, at most ±50 ms)
   function sheetShift(buf, offset, onsetSamples) {
     const sr = buf.sampleRate, d = buf.getChannelData(0), from = Math.max(0, Math.round((offset - 0.05) * sr)), to = Math.min(d.length, Math.round((offset + 0.05) * sr));
@@ -461,7 +466,7 @@ const AudioEngine = (() => {
    * track afterwards. opts.downbeatAt (context time) starts the feature track
    * so that its first downbeat lands exactly then. */
   function musicMode(m, opts) {
-    if (m === mode) return;
+    if (m === mode && !(opts && opts.downbeatAt)) return;      // a downbeat re-cues the track already playing
     mode = m;
     if (m === 'fs') resumeAt.fs = 0;
     if (!musicOn) return;
@@ -484,6 +489,12 @@ const AudioEngine = (() => {
     gn.setValueAtTime(depth, t + Math.max(0.2, seconds));
     gn.linearRampToValueAtTime(1, t + Math.max(0.2, seconds) + 0.8);
   }
+  // bring the music back now (a ducked moment was closed early)
+  function unduck(fade) {
+    const t = ctx.currentTime, gn = musicDuck.gain;
+    gn.cancelScheduledValues(t); gn.setValueAtTime(gn.value, t);
+    gn.linearRampToValueAtTime(1, t + (fade == null ? 0.6 : fade));
+  }
   // muffle the music while the reels tease a feature
   function suspense(on) {
     const f = musicLP.frequency, t = ctx.currentTime;
@@ -492,10 +503,10 @@ const AudioEngine = (() => {
   }
   Object.keys(SOUND_FILES).forEach(n => { if (SOUND_FILES[n]) load(n, SOUND_FILES[n]); });
 
-  return { play, anticipation, startMusic, stopMusic, setVolume, setSfx, setSfxVolume, setMusicVolume, resume, duck, duckFor: duck, suspense, musicMode,
+  return { play, anticipation, startMusic, stopMusic, setVolume, setSfx, setSfxVolume, setMusicVolume, resume, suspend, duck, duckFor: duck, unduck, suspense, musicMode,
     trackTime, has, length, marks, ready, now: () => ctx.currentTime, ctx, musicIn: musicVol,
     // read-only state for tests and the dev console
-    debug: () => ({ voices: live.map(v => v.name), sfxOn, mute: sfxMute.gain.value, sheets: !sheetsFailed, music: musicOn, track: cur ? cur.key : null }),
+    debug: () => ({ voices: live.map(v => v.name), sfxOn, mute: sfxMute.gain.value, sheets: !sheetsFailed, sheetErr, music: musicOn, track: cur ? cur.key : null }),
     get musicOn() { return musicOn; },
     get musicTrack() { return cur ? cur.key : null; } };
 })();

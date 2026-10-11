@@ -21,11 +21,15 @@ window.GOS = (() => {
   G.clock = { real: 0, game: 0, scale: 1, pace: 1, slow: 1, paused: false };
   let slowmo = null;
   G.setPace = pace => { G.clock.pace = pace; G.clock.scale = pace * G.clock.slow; };
+  // turbo as saved, but only where the jurisdiction allows it (one browser can visit several)
+  G.turboOn = () => !!G.settings.turbo && (!G.allow || G.allow('turbo'));
+  // a finger, not a mouse: hit areas and spacing grow to touch size
+  G.coarse = !!(typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches);
   // dip game time to `factor` almost instantly, then ease back to normal over realMs
   G.slowmo = (factor, realMs) => {
     if (G.clock.pace > 2) return;                       // slam-stop wins
     if (G.settings.reducedMotion) factor = Math.max(factor, 0.6);
-    if (G.settings.turbo || G.S.auto > 0) { factor = Math.max(factor, 0.55); realMs *= 0.5; }
+    if (G.turboOn() || G.S.auto > 0) { factor = Math.max(factor, 0.55); realMs *= 0.5; }
     slowmo = { factor: Math.min(factor, G.clock.slow), t: 0, dur: realMs / 1000 };
   };
   G.cancelSlowmo = () => { slowmo = null; G.clock.slow = 1; G.clock.scale = G.clock.pace; };
@@ -456,7 +460,7 @@ window.GOS = (() => {
     ctx.font = G.font(size, opts.weight || 700, opts.display);
     if (opts.maxW) {
       const w = textW(ctx, t, opts.tabular);
-      if (w > opts.maxW) { size = Math.max(6, size * opts.maxW / w); ctx.font = G.font(size, opts.weight || 700, opts.display); }
+      if (w > opts.maxW) { size = Math.max(opts.min || 6, size * opts.maxW / w); ctx.font = G.font(size, opts.weight || 700, opts.display); }
     }
     ctx.textAlign = opts.align || 'center'; ctx.textBaseline = opts.baseline || 'middle';
     if (opts.shadow) { ctx.save(); ctx.shadowColor = opts.shadow; ctx.shadowBlur = opts.blur || 6; ctx.shadowOffsetY = opts.offY || 1; }

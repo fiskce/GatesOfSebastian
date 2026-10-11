@@ -240,9 +240,9 @@ ok('every string the code asks for exists (canvas, DOM and overlays)', () => {
 });
 ok('the service worker is v10 and clears older versions of this game only', () => {
   const sw = require('fs').readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-  assert.ok(/VERSION = 'gos10-core-\d+'/.test(sw) && /MEDIA = 'gos10-media'/.test(sw));
+  assert.ok(/VERSION = 'gos10-core-\d+'/.test(sw) && /MEDIA = VERSION\.replace\('-core-', '-media-'\)/.test(sw));
   const re = /^gos\d+-(core|media)/;
-  for (const k of ['gos9-core-3', 'gos9-media', 'gos8-core-2']) assert.ok(re.test(k), k);
+  for (const k of ['gos9-core-3', 'gos9-media', 'gos8-core-2', 'gos10-media', 'gos10-media-1']) assert.ok(re.test(k), k);
   for (const k of ['other-app-cache', 'workbox-precache']) assert.ok(!re.test(k), k);
 });
 console.log(`\n${n} checks passed`);

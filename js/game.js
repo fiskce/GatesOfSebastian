@@ -26,7 +26,7 @@
     S.message = msg; S.messageT = G.clock.real;
     if (speak !== false && live) live.textContent = msg;
   }
-  function setPace() { G.setPace(S.slam ? 3.5 : G.settings.turbo ? 2 : 1); }
+  function setPace() { G.setPace(S.slam ? 3.5 : G.turboOn() ? 2 : 1); }
   // adaptive music: a light pulse while spinning, building per cascade; free spins follow the storm
   const fsLevel = () => 0.55 + 0.45 * G.clamp(Math.log2(1 + S.persistent) / 7, 0, 1);
   const spinLevel = () => S.inFS ? fsLevel() : 0.25;
@@ -112,12 +112,12 @@
     const mode = buy ? 'bonus' : S.ante ? 'ante' : 'base';
     S.busy = true; S.autoMenu = false;            // claimed before any await: a second press can't start another round
     // the breech closes the moment the round commits, before the network answers
-    if (G.Wallet.canAfford(mode)) AudioEngine.play(G.settings.turbo ? 'spin.press.t' : S.auto > 0 ? 'spin.press.auto' : mode === 'ante' ? 'spin.press.dc' : 'spin.press');
+    if (G.Wallet.canAfford(mode)) AudioEngine.play(G.turboOn() ? 'spin.press.t' : S.auto > 0 ? 'spin.press.auto' : mode === 'ante' ? 'spin.press.dc' : 'spin.press');
     let src;
     try { src = await G.Wallet.begin(mode); }
     catch (e) {
       S.busy = false; S.auto = 0;
-      if (e.code === 'LOW' || e.code === 'ERR_IPB') { G.UI.open('credit'); AudioEngine.play('ui.denied'); }
+      if (e.code === 'LOW' || e.code === 'ERR_IPB') { G.UI.open('credit', { quiet: true }); AudioEngine.play('ui.denied'); }
       else showError(R ? R.message(e) : String(e));
       return;
     }
@@ -137,7 +137,7 @@
       const lim = S.autoLimits, bet = G.baseBet();
       // the player's own stops (multiples of the bet), checked between rounds
       const stop = !lim || S.auto <= 0 ? null : lim.loss && lim.start - S.credit >= lim.loss * bet ? 'msgAutoLoss'
-        : lim.win && S.roundWin >= lim.win * bet ? 'msgAutoWin' : lim.feature && res && res.triggered ? 'msgAutoFeature' : null;
+        : lim.win && S.roundWin >= lim.win * bet ? 'msgAutoWin' : null;
       if (stop) { S.auto = 0; say(T(stop)); }
       if (S.auto > 0) {
         if (G.Wallet.canAfford(S.ante ? 'ante' : 'base')) { await G.wait(320); if (S.auto > 0 && !S.busy) round(false); }
@@ -151,7 +151,11 @@
     S.roundWin = 0; S.winDisplay = 0;
     if (src.broken) throw new Error('round without events');
     const r = await spin({ buy, src });
-    if (r.triggered && !r.maxed) await feature(!buy, src);
+    if (r.triggered && !r.maxed) {
+      // autoplay's "stop when free spins start" applies now, so the feature plays at its own pace
+      if (S.auto > 0 && S.autoLimits && S.autoLimits.feature) { S.auto = 0; say(T('msgAutoFeature')); }
+      await feature(!buy, src);
+    }
     G.Music.setIntensity(0);
     G.Stats.record('round', { winX: S.roundWin / G.baseBet() });
     return r;
@@ -162,6 +166,7 @@
     const bet = G.baseBet();
     S.slam = false; setPace();
     S.tumbleWin = 0; S.tumbleShown = 0; S.spinMult = 0; S.cascade = 0;
+    S.winBase = S.inFS ? S.fsTotal : 0;          // WIN counts this spin on top of what the feature has banked
     if (S.inFS) { S.fsLeft--; S.fsPlayed++; }
     else S.winDisplay = 0;
     const mode = S.inFS ? 'fs' : (S.ante && !opts.buy ? 'ante' : 'base');
@@ -204,6 +209,8 @@
       await celebrate(spinWin, bet);
     }
     S.tumbleShown = 0; S.countTo = null;
+    // WIN holds this spin's win from the moment it is banked (not only after the scatters and banners)
+    S.winDisplay = S.inFS ? S.fsTotal : spinWin;
 
     G.Stats.record('spin', { free: mode === 'fs', win: spinWin, winX: spinWin / bet, cascades: S.cascade, mult: applies ? out.ev.mult : 0,
       nearMiss: mode !== 'fs' && !opts.buy && out.res.scatters === SCATTERS_FS - 1, maxed });
@@ -228,8 +235,6 @@
     } else if (!S.inFS && out.res.scatters === SCATTERS_FS - 1) {
       // a near miss is counted for stats only: no message, no reaction
     }
-    if (!S.inFS) S.winDisplay = spinWin;
-    else S.winDisplay = S.fsTotal;
     return { triggered, retrig, maxed };
   }
 
@@ -237,7 +242,7 @@
   //      the remaining columns are held back and "spin" for suspense
   async function dropBoard(board, mode, buy) {
     const need = mode === 'fs' ? SCATTERS_RETRIG : SCATTERS_FS;
-    const turbo = G.settings.turbo;
+    const turbo = G.turboOn();
     const colDelay = [], antic = [];
     let count = 0, t = 0.16;
     for (let c = 0; c < COLS; c++) {
@@ -495,10 +500,16 @@
       };
       tick();
     });
-    if (AudioEngine.now() < breakAt - 0.05) {          // skipped: the break happens now
+    let breakNow = AudioEngine.now() < breakAt - 0.05;
+    if (document.hidden) {             // the player went away: nothing breaks in a background tab, it waits for them
+      breakNow = true; voices.forEach(v => v.stop(0.05));
+      await G.wait(1);                 // the game clock is frozen while hidden
+    }
+    if (breakNow) {                    // skipped (or back from another tab): the break happens now, on a fresh downbeat
       voices.forEach(v => v.stop(0.05));
       const n = AudioEngine.now();
       AudioEngine.play('fs.break'); AudioEngine.play('fs.horn.A4', { when: n + hornA }); AudioEngine.play('fs.horn.D5', { when: n + hornD });
+      AudioEngine.musicMode('fs', { downbeatAt: n });
     }
     S.charging = false;
     AudioEngine.suspense(false); G.Seb.lean(false);
@@ -675,7 +686,7 @@
     switch (id) {
       case 'spin': case 'sound': return null;
       case 'info': case 'settings': case 'history': case 'stats': case 'menu': case 'fair': case 'betReadout': return null;   // UI.open sounds
-      case 'buy': return 'ui.press.l';
+      case 'buy': return null;               // askBuy sounds: its panel opening, or the denial
       case 'ante': return S.ante ? 'toggle.off' : 'toggle.on';
       case 'turbo': return G.settings.turbo ? 'turbo.off' : 'turbo.on';
       case 'auto': return S.auto > 0 ? 'ui.press' : null;
@@ -696,13 +707,14 @@
       const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
       const inside = b.shape === 'circle' ? Math.hypot(px - cx, py - cy) <= b.w / 2
         : px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
-      if (inside) return b;
+      if (inside) { hit.padded = false; return b; }
       const padX = Math.max(0, (min - b.w) / 2), padY = Math.max(0, (min - b.h) / 2);
       if ((padX || padY) && px >= b.x - padX && px <= b.x + b.w + padX && py >= b.y - padY && py <= b.y + b.h + padY) {
         const d = Math.hypot(px - cx, py - cy);
         if (d < bestD) { bestD = d; best = b; }
       }
     }
+    hit.padded = !!best;
     return best;
   }
   G.pointer = null;
@@ -710,7 +722,10 @@
     AudioEngine.resume();
     const p = localXY(e); G.pointer = p;
     if (O.blocking()) { O.skip(); return; }
-    const b = hit(p.x, p.y);
+    const r = G.L.reel, q = G.worldInv ? G.worldInv.transformPoint(new DOMPoint(p.x * G.DPR, p.y * G.DPR)) : p;
+    const onBoard = q.x >= r.x && q.x <= r.x + r.w && q.y >= r.y && q.y <= r.y + r.h;
+    let b = hit(p.x, p.y);
+    if (b && hit.padded && onBoard) b = null;      // a control's touch padding never takes a tap on the board itself
     if (b) {
       if (b.disabled) { AudioEngine.play('ui.denied'); if (b.reason) H.chip(T(b.reason), p.x, p.y - 8); return; }
       G.pressId = b.id;
@@ -731,8 +746,7 @@
     }
     if (S.autoMenu) { S.autoMenu = false; return; }
     // tapping the board during a spin hurries it along
-    const r = G.L.reel, q = G.worldInv ? G.worldInv.transformPoint(new DOMPoint(p.x * G.DPR, p.y * G.DPR)) : p;
-    if (S.busy && q.x >= r.x && q.x <= r.x + r.w && q.y >= r.y && q.y <= r.y + r.h) Game.slam();
+    if (S.busy && onBoard) Game.slam();
   });
   let hoverId = null;
   G.canvas.addEventListener('pointermove', e => {
@@ -793,8 +807,12 @@
       case 'ArrowDown': e.preventDefault(); if (G.allow('bet') && !S.busy && !S.inFS && S.auto <= 0) AudioEngine.play(pressSound('betDown')); Game.bet(-1); break;
       case 'KeyT': if (G.allow('turbo')) AudioEngine.play(pressSound('turbo')); Game.toggleTurbo(); break;
       case 'KeyM': Game.toggleSound(); break;
-      case 'KeyB': if (G.allow('buy') && !S.busy && !S.inFS) { AudioEngine.play('ui.press.l'); Game.askBuy(); } break;
-      case 'KeyA': if (G.allow('auto') && !S.inFS) { if (S.auto > 0) AudioEngine.play('ui.press'); Game.autoPressed(); } break;
+      case 'KeyB': if (G.allow('buy') && !S.busy && !S.inFS) Game.askBuy(); break;
+      case 'KeyA':
+        if (!G.allow('auto') || S.inFS) break;
+        if (S.busy && S.auto <= 0) { AudioEngine.play('ui.denied'); break; }      // the round has to end first
+        if (S.auto > 0) AudioEngine.play('ui.press');
+        Game.autoPressed(); break;
       case 'KeyI': G.UI.open('info'); break;
       case 'Escape': S.autoMenu = false; break;
     }
@@ -808,6 +826,7 @@
     else if (!document.hidden && dropping && S.suspense && !liveDrone) liveDrone = AudioEngine.anticipation();
     if (G.settings.music) { if (document.hidden) AudioEngine.stopMusic(); else AudioEngine.startMusic(); }
     if (document.hidden) G.Music.stop(); else if (G.settings.music && G.settings.dynMusic) G.Music.start();
+    if (document.hidden) AudioEngine.suspend(); else AudioEngine.resume();     // scheduled voices freeze with the game
   });
 
   // ---------------- render loop ----------------

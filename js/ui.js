@@ -23,7 +23,23 @@
     PANELS.forEach(p => { $('m-' + p).hidden = true; });
     if (lastFocus && lastFocus.focus && lastFocus !== document.body) lastFocus.focus(); else G.canvas.focus();
   };
-  UI.open = name => {
+  /* A panel opened by a press (canvas buttons act on pointerdown) must not
+   * take that same tap: on phones the browser sends the tap's click to
+   * whatever is under the finger when it lifts, which is now a button on the
+   * sheet. So the new panel ignores the pointer until that finger is up. */
+  let pointerDown = false;
+  window.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+  const up = () => { pointerDown = false; };
+  window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', up, true);
+  function shieldFromOpeningTap(m) {
+    if (!pointerDown) return;
+    m.style.pointerEvents = 'none';
+    const lift = () => setTimeout(() => { m.style.pointerEvents = ''; }, 120);   // after the tap's own click has been sent
+    window.addEventListener('pointerup', lift, { once: true }); window.addEventListener('pointercancel', lift, { once: true });
+    setTimeout(() => { m.style.pointerEvents = ''; }, 1500);
+  }
+  // opts.quiet: the caller makes the one sound for this press itself
+  UI.open = (name, opts) => {
     if (blocking) return;
     if (name === 'buy' && (S.busy || S.inFS)) return;
     if ((name === 'auto' || name === 'bets') && (S.busy || S.inFS || S.auto > 0)) return;
@@ -39,7 +55,8 @@
     const card = $('m-' + name).querySelector('.card');
     card.scrollTop = 0;
     card.focus({ preventScroll: true });
-    AudioEngine.play('ui.open');
+    shieldFromOpeningTap($('m-' + name));
+    if (!(opts && opts.quiet)) AudioEngine.play('ui.open');
   };
   UI.fullscreen = () => {
     const d = document;
@@ -216,6 +233,9 @@
   function showTab(name) {
     $('rulesCard').querySelectorAll('.tab').forEach(t => { const on = t.dataset.tab === name; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
     $('rulesCard').querySelectorAll('[role=tabpanel]').forEach(p => { p.hidden = p.dataset.tab !== name; });
+    // a new tab starts at its top, just under the stuck tab bar
+    const c = $('rulesCard'), p = c.querySelector('[role=tabpanel]:not([hidden])'), tb = c.querySelector('.tabs');
+    if (p && tb) c.scrollTop = Math.min(c.scrollTop, Math.max(0, p.offsetTop - tb.offsetHeight - 12));
   }
   // Built from the published math (js/math-info.js), in the right wording for
   // the mode, listing only the controls this mode has.

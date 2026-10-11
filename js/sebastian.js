@@ -99,11 +99,11 @@
     const pool = LINES[kind];
     if (!pool || !S.started) return;
     const now = G.clock.real, prio = PRIORITY[kind];
-    if (chance != null && Math.random() > chance * (S.auto > 0 || G.settings.turbo ? 0.5 : 1)) return;
+    if (chance != null && Math.random() > chance * (S.auto > 0 || G.turboOn() ? 0.5 : 1)) return;
     if (bubble && !prio) return;
     if (now - lastSay < (prio ? 1.2 : 5)) return;
     lastSay = now;
-    bubble = { text: pool[(Math.random() * pool.length) | 0], t: 0, dur: S.auto > 0 || G.settings.turbo ? 1.6 : 2.4 };
+    bubble = { text: pool[(Math.random() * pool.length) | 0], t: 0, dur: S.auto > 0 || G.turboOn() ? 1.6 : 2.4 };
   };
 
   // ---------------- update ----------------
