@@ -62,7 +62,7 @@ A five-lens review of v10 (game flow, Stake fit, audio, rendering, DOM), each fi
 - **Stake check sizes:** BALANCE, WIN and BET shrink or stack instead of disappearing; messages that don't fit the console float under the board at 11 px; every control has a full touch target (44 px, 36 px compact, 400×225 included).
 - **Controls:** turbo follows the jurisdiction everywhere; Buy with Double Chance on, and AUTO during a round, are unlit and say why; one sound per press; "stop when free spins start" stops at the trigger.
 - **Sound:** nothing plays while the tab is hidden; the music comes back as soon as a big win or the feature outro closes; the award clicks keep pace under turbo.
-- **Offline:** the media cache turns over with each release, and a sound sheet whose size doesn't match `sfx.json` is refused (the recipes play instead), so a stale sheet can never play the wrong sounds.
+- **Offline:** the media cache turns over with each release, and a sound sheet whose size doesn't match `sfx.json` is refused (the recipes play instead), so a stale sheet can never play the wrong sounds. The worker clears only older releases of its own version, since fiskce.com serves every version side by side, and it hands a worker left at an old address (`/gatesofsebastianvN/`) the host's forwarding stand-in.
 - **Amounts:** never more decimals than the currency has (two for USD), so a sub-cent amount such as 3.025 shows as $3.03; the balance and wins stay exact underneath.
 - **Rendering:** enamel plates are freed on resize and bake their shadow at low resolution; brushed texture reaches the plates' edges; big-win coins still in the air finish their fall over the board.
 

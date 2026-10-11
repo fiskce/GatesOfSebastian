@@ -4,15 +4,18 @@
  *
  * Scope is this folder, so it also works when the game is served from a
  * sub-path (e.g. fiskce.com/gatesofsebastianv9/). Cache Storage is shared by
- * the whole origin, so this worker only ever touches this game's caches ('gos<N>-core-<n>/-media-<n>').
+ * the whole origin, and every version of the game may be served from it side by side
+ * (fiskce.com/prod/game/api/thunderhuntersebastian/v1/ ... /v10/), so this worker only ever
+ * clears older releases of its own version ('gos10-core-<n>/-media-<n>'), never another version's.
  *  - code (html/js/css/json): network first, cache as fallback -> online
  *    players always get the latest build
  *  - art, fonts, sounds: cache first (the .m4a sound sheets Safari uses are
  *    cached on first use; offline without them, the recipes render the same sounds)
  * Bump VERSION on every release.
  */
-const VERSION = 'gos10-core-2';
+const VERSION = 'gos10-core-3';
 const MEDIA = VERSION.replace('-core-', '-media-');      // media turns over with each release too, so a sheet never outlives its sfx.json
+const OWN = new RegExp('^' + VERSION.split('-')[0] + '-(core|media)');      // this version's caches: gos10-core-*, gos10-media*
 const CORE = [
   './',
   'manifest.json',
@@ -78,7 +81,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(k => /^gos\d+-(core|media)/.test(k) && k !== VERSION && k !== MEDIA).map(k => caches.delete(k))))
+    .then(keys => Promise.all(keys.filter(k => OWN.test(k) && k !== VERSION && k !== MEDIA).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 

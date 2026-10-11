@@ -921,7 +921,18 @@
     document.head.appendChild(link);
     const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
     if (!('serviceWorker' in navigator) || (location.protocol === 'http:' && !local)) return;
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {}));
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
+      /* Every version once lived at /gatesofsebastian[vN]/ and now sits under
+       * /prod/game/api/thunderhuntersebastian/vN/. A worker registered at an old address
+       * can't update itself through the redirect, so ask it to here: the host answers
+       * there with a stand-in that sends visits on to the new address (offline too).
+       * If the host doesn't, the old worker is removed rather than left stranded. */
+      const own = new URL('./', location.href).href;
+      if (navigator.serviceWorker.getRegistrations) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => {
+        if (r.scope !== own && /\/gatesofsebastian(v\d+)?\/$/.test(new URL(r.scope).pathname)) r.update().catch(() => r.unregister());
+      })).catch(() => {});
+    });
   })();
 
   // ---------------- boot ----------------

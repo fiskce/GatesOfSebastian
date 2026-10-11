@@ -9,7 +9,10 @@ const PF = require(path.join(__dirname, '..', 'js', 'fair.js'));
 const E = require(path.join(__dirname, '..', 'js', 'engine.js'));
 
 let n = 0;
-const ok = (name, fn) => { fn(); n++; console.log('  ok  ' + name); };
+const pending = [];
+const pass = name => { n++; console.log('  ok  ' + name); };
+// a check may return a promise: it is counted when it settles, and a failure fails the run
+const ok = (name, fn) => { const r = fn(); if (r && r.then) pending.push(r.then(() => pass(name), e => { e.message = name + ': ' + e.message; throw e; })); else pass(name); };
 
 ok('SHA-256 matches node:crypto', () => {
   for (const msg of ['', 'abc', 'x'.repeat(55), 'y'.repeat(56), 'z'.repeat(64), 'q'.repeat(1000)]) {
@@ -257,11 +260,17 @@ ok('amounts never show more decimals than the currency has (no $3.025)', () => {
     assert.ok(/^\$[\d,]+\.\d{2}$/.test(s), s);
   }
 });
-ok('the service worker is v10 and clears older versions of this game only', () => {
-  const sw = require('fs').readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+ok('the service worker is v10 and clears only older v10 caches (every version shares the origin)', async () => {
+  const vm = require('vm'), sw = require('fs').readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
   assert.ok(/VERSION = 'gos10-core-\d+'/.test(sw) && /MEDIA = VERSION\.replace\('-core-', '-media-'\)/.test(sw));
-  const re = /^gos\d+-(core|media)/;
-  for (const k of ['gos9-core-3', 'gos9-media', 'gos8-core-2', 'gos10-media', 'gos10-media-1']) assert.ok(re.test(k), k);
-  for (const k of ['other-app-cache', 'workbox-precache']) assert.ok(!re.test(k), k);
+  // run the real activate step against a fake Cache Storage holding this game's caches from every version, and another app's
+  const version = sw.match(/VERSION = '([^']+)'/)[1], media = version.replace('-core-', '-media-');
+  const keys = [version, media, 'gos10-core-1', 'gos10-core-2', 'gos10-media', 'gos10-media-2', 'gos9-core-3', 'gos9-media', 'gos8-core-2', 'other-app-cache', 'workbox-precache'];
+  const deleted = [], on = {};
+  const self = { addEventListener: (t, f) => { on[t] = f; }, clients: { claim: () => Promise.resolve() }, skipWaiting() {}, registration: { scope: 'https://x/' } };
+  vm.runInNewContext(sw, { self, caches: { keys: async () => keys, delete: async k => { deleted.push(k); return true; } }, Promise, URL, setTimeout, Request: function () {}, Response: function () {} });
+  let done; on.activate({ waitUntil: p => { done = p; } });
+  await done;
+  assert.deepStrictEqual(deleted.sort(), ['gos10-core-1', 'gos10-core-2', 'gos10-media', 'gos10-media-2'].filter(k => k !== version && k !== media).sort());
 });
-console.log(`\n${n} checks passed`);
+Promise.all(pending).then(() => console.log(`\n${n} checks passed`), e => { console.error(e); process.exit(1); });
