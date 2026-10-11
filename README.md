@@ -21,7 +21,7 @@ python3 -m http.server 8000      # then visit http://localhost:8000
 
 Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts, and the sound effects are rendered in the browser from the same recipes the sound sheets were made from (the music stays silent). Offline/install support also needs it to be served (https or localhost).
 
-**Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet (hold − / + to keep stepping; tap BET to pick any level), T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations. A control that can't be used right now is unlit and says why when pressed. The rules list every control.
+**Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet (hold − / + to keep stepping; tap BET to pick any level), T toggles turbo, B buys free spins, A opens autoplay, M mutes and I opens the rules. Taps skip win celebrations. A control that can't be used right now is unlit and says why when pressed. The rules list every control.
 
 ## What's new in v10: "Forged Storm"
 
@@ -52,6 +52,18 @@ A major refinement, not a new game: the same board, Sebastian, dusk-to-storm sky
 - Cards are ink steel with an X in the corner (and Esc, and the backdrop); on phones held upright they rise as bottom sheets. The rules are in tabs. Autoplay has its own sheet: 10/25/50/100/∞ rounds, and optional stops when the balance drops by a set amount, on a single big win, or when free spins start.
 
 **Honest and respectful**: no near-miss messages or reactions, no teasing a feature that is already decided or was bought, turbo shortens presentations but never below 600 ms of legible time, bet buttons sound the same at every level, mute silences every bus, and every flash goes through one limiter.
+
+### v10.1: review fixes
+
+A five-lens review of v10 (game flow, Stake fit, audio, rendering, DOM), each finding reproduced and fixed:
+- **STOP can no longer hang a round.** The drop physics runs in steps of at most 1/120 s, so gems always settle, whatever the frame rate or pace (before, a STOP at 60 Hz could leave them bouncing forever with the round open).
+- **WIN is the round's running total**, the trigger spin included; it never steps back, not even when a big win re-counts on its own plate.
+- **Phones:** a bottom sheet ignores the tap that opened it, so the button that slides in under the finger isn't pressed too.
+- **Stake check sizes:** BALANCE, WIN and BET shrink or stack instead of disappearing; messages that don't fit the console float under the board at 11 px; every control has a full touch target (44 px, 36 px compact, 400×225 included).
+- **Controls:** turbo follows the jurisdiction everywhere; Buy with Double Chance on, and AUTO during a round, are unlit and say why; one sound per press; "stop when free spins start" stops at the trigger.
+- **Sound:** nothing plays while the tab is hidden; the music comes back as soon as a big win or the feature outro closes; the award clicks keep pace under turbo.
+- **Offline:** the media cache turns over with each release, and a sound sheet whose size doesn't match `sfx.json` is refused (the recipes play instead), so a stale sheet can never play the wrong sounds.
+- **Rendering:** enamel plates are freed on resize and bake their shadow at low resolution; brushed texture reaches the plates' edges; big-win coins still in the air finish their fall over the board.
 
 ## What's new in v9
 
