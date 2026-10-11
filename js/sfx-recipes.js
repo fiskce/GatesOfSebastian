@@ -472,7 +472,9 @@
       const t = i / SR, vib = i > vibD ? 6 * Math.min(1, (i - vibD) / ns(0.15)) * sin1(vibR * t) : 0;
       return f * cents(scoop * exp(-t / 0.014) + vib + 2 * sin1(wowP + wowR * t));
     };
-    const a = saw(n, fq, rng());                            // a lone saw: brass is close to 1/k (a pulse at a random phase can cancel the fundamental)
+    const F = new Float64Array(n);                            // pitch at control rate (every 16 samples, interpolated)
+    for (let i = 0; i < n; i += 16) { const a0 = fq(i), a1 = fq(Math.min(n - 1, i + 16)); for (let k = 0; k < 16 && i + k < n; k++) F[i + k] = a0 + (a1 - a0) * k / 16; }
+    const a = saw(n, i => F[i], rng());                            // a lone saw: brass is close to 1/k (a pulse at a random phase can cancel the fundamental)
     // breath envelope: soft attack with a small "blat" overshoot, sustain, release
     const env = new Float64Array(n), at = ns(o.attack || 0.024), on = ns(dur), k = decayK(rel), tg = ns(0.004);
     let r = 1;
@@ -518,7 +520,7 @@
       const pan = notes.length > 1 ? (j / (notes.length - 1) * 2 - 1) * (o.spread == null ? 0.25 : o.spread) : 0, A = (pan + 1) * 0.125;
       const gl = cos1(A), gr = sin1(A), lv = 1 / Math.sqrt(notes.length);
       for (let i = 0; i < n; i++) { out.L[i] += x[i] * gl * lv; out.R[i] += x[i] * gr * lv; }
-      if (n > SR / 2) yield;
+      yield;
     }
     const d = o.drive || 1.6, nn = tanh(d), p = Math.max(peakOf(out.L), peakOf(out.R)) || 1;
     for (let i = 0; i < n; i++) { out.L[i] = tanh(out.L[i] / p * d) / nn; out.R[i] = tanh(out.R[i] / p * d) / nn; }
@@ -851,9 +853,10 @@
     m.add(boom(rng, note(T.body[1]), { drop: note(T.body[0]) / note(T.body[1]) * 1.25, dropT: 0.05 + v * 0.02, t60: 0.14 + v * 0.1, drive: 3 + v * 0.3, even: 0.4 + v * 0.2, lp: 1600, sub: T.sub }), 0.002, -3);
     // the punch phones can play: a felt-damped mid thock (G3 -> F3) on the impact, heavier per tier
     m.add(thock(rng, { f0: note('G3') * 1.3, f1: note('F3'), sweep: 0.015, t60: 0.05 + v * 0.02, drive: 3 + v * 0.2, even: 0.3 + v * 0.2, hp: 140 }), 0.002, -6 + v * 0.5);
+    yield;
     const rb = yield* rumble(rng, T.rumble, { fc: T.fc, rolls: 2 + v, drive: 2.4, lp: 2400, width: 0.15 + T.width * 0.35 });   // width grows with the tier
     m.addSt(rb, 0.008, -7 + v * 0.5);
-    yield* m.space(T.wet, { t60: 0.5 + v * 0.25, size: 0.7 + v * 0.15, damp: 4000, width: 0.4 + v * 0.15 });
+    yield* m.space(T.wet, { t60: 0.5 + v * 0.25, size: 0.7 + v * 0.15, damp: 4000, width: 0.25 + v * 0.12 });
     return m.glue(1.3);
   });
   // the orb lands: thunk + glass ring tuned by tier (bigger = lower)
@@ -898,10 +901,11 @@
     m.add(norm(satArr(modal(rng, T.len * 0.8, [
       [a * cents(rr(rng, -4, 4)), 0.32 + v * 0.14, 0], [a * 2.0 * vary(rng, 1, 0.003), 0.2 + v * 0.08, -4], [a * 2.76, 0.12 + v * 0.05, -7], [a * 3.9, 0.07, -11], [a * 5.4, 0.04, -14],
     ], { strike: 0.0006, click: 2 }), 1.3)), 0.001, -3);
+    yield;
     m.add(boom(rng, note(T.body[1]), { drop: note(T.body[0]) / note(T.body[1]) * 1.2, dropT: 0.05, t60: 0.2 + v * 0.13, drive: 3.2 + v * 0.3, even: 0.4 + v * 0.2, lp: 1500, sub: v >= 2 }), 0.002, -1);
     m.add(thock(rng, { f0: note('G3') * 1.3, f1: note('F3'), sweep: 0.015, t60: 0.06 + v * 0.025, drive: 3 + v * 0.2, even: 0.3 + v * 0.2, hp: 140 }), 0.002, -5 + v * 0.5);   // heavier per tier, where phones hear it
     if (v >= 1) ['D6', 'A6'].forEach((nm, i) => m.add(tine(rng, note(nm), { t60: 0.25, len: 0.26 }), 0.01 + i * 0.03, -14, i ? 0.4 : -0.4));
-    yield* m.space(T.wet, { t60: 0.5 + v * 0.22, size: 0.8 + v * 0.12, damp: 3800, width: 0.4 + v * 0.15 });
+    yield* m.space(T.wet, { t60: 0.5 + v * 0.22, size: 0.8 + v * 0.12, damp: 3800, width: 0.25 + v * 0.12 });
     return m.glue(1.4);
   });
   // winners shatter and exit: glass spray + falling whoosh + a soft body
@@ -937,23 +941,22 @@
     const ramp = i => Math.min(1, i / nr);
     // reversed thunder: the roll swells toward the cut and ends on the reversed crack
     const th = yield* rumble(rng, total, { fc: 520, rolls: 6, drive: 2.6, lp: 6000, t60: total * 1.2, width: 0.3 });
+    yield;
     const cr = crack(rng, { len: 0.25, t60: 0.12, lo: 900, hi: 7000, crackles: 10, stereo: true });
     addInto(th.L, cr.L, (n - nr) / SR, 0.8); addInto(th.R, cr.R, (n - nr) / SR, 0.8);   // reversed, the crack lands at 2.316 s
     const L = reverse(th.L), Rr = reverse(th.R);
     const lp = sweep(400, 6000, dur);
-    for (const c of [L, Rr]) { svf(c, 'lp', lp, 0.8); svf(c, 'hp', 70, 0.7071); }       // sub stays an extra, not the body
-    yield;
+    for (const c of [L, Rr]) { svf(c, 'lp', lp, 0.8); svf(c, 'hp', 70, 0.7071); yield; }  // sub stays an extra, not the body
     // the build starts at a third of its final level, not from silence: the
     // first second has to read over the feature track's intro
     const p = Math.max(peakOf(L.subarray(0, nr)), peakOf(Rr.subarray(0, nr))) || 1;
     for (let i = 0; i < n; i++) { const t = ramp(i), g = (0.32 + 0.68 * t * Math.sqrt(t)) / p; L[i] *= g; Rr[i] *= g; }
     m.addSt({ L, R: Rr }, 0, -3);
     // the air being pulled in: band-passed noise swelling and brightening into the cut (a reversed cymbal of storm)
-    const air = white(rng, n), air2 = white(rng, n);
-    for (let i = 0; i < n; i++) air2[i] = air[i] * 0.8 + air2[i] * 0.2;
-    for (const c of [air, air2]) { svf(c, 'bp', sweep(700, 6500, dur), 0.9); for (let i = 0; i < n; i++) { const t = ramp(i); c[i] *= t * t * t; } }
-    const ap = Math.max(peakOf(air), peakOf(air2)) || 1;
-    m.addSt({ L: scale(air, 1 / ap), R: scale(air2, 1 / ap) }, 0, -10);
+    // (centred: the thunder under it is already wide, and a noise bed in stereo costs twice the bytes)
+    const air = white(rng, n);
+    svf(air, 'bp', sweep(700, 6500, dur), 0.9); for (let i = 0; i < n; i++) { const t = ramp(i); air[i] *= t * t * t; }
+    m.add(norm(air), 0, -10);
     yield;
     // crystal tremolo D6 + A6, its rate rising 8 -> 14 Hz (phase-integrated). Each
     // pulse re-strikes the crystal: the glass partial (2.756×, a quarter-tone off
@@ -967,6 +970,7 @@
       tri[i] = 0.5 + 0.5 * sin1(q - 0.25);
       if (before < 0.15 && q >= 0.15) strike[i] = 1;
     }
+    yield;
     const kGlass = decayK(0.07);
     const tr = (nm, pan) => {
       const f = note(nm), x = sine(n, f, rng()), h2 = sine(n, f * 2, rng()), h = sine(n, f * 2.756, rng());
@@ -978,7 +982,10 @@
       for (let i = 0; i < 96; i++) x[i] *= 0.3 + 0.7 * i / 96;
       m.add(x, 0, -9, pan);
     };
-    tr('D6', -0.2); tr('A6', 0.2);
+    tr('D6', -0.2);
+    yield;
+    tr('A6', 0.2);
+    yield;
     // a low D pedal so the build has body on phones (harmonics, not sub)
     const ped = sine(n, note('D2'), 0); for (let i = 0; i < n; i++) { const t = ramp(i); ped[i] *= t * t; }
     satArr(ped, 2.5); m.add(norm(ped), 0, -12);
@@ -1006,19 +1013,19 @@
   R('fs.break', { variants: 1, bus: 'fs', stereo: true, notes: ['D2', 'D3', 'A3', 'D4', 'F4', 'A4'], target: { lufs: -16 }, marks: { hornA4: 0.234, hornD5: 0.469 }, maxDur: 2.4 }, function* (rng) {
     const m = new Mix(2.4);
     yield* breakHit(rng, m);
-    yield* m.space(-15, { t60: 0.84, size: 1.1, damp: 3800, width: 0.6 });
+    yield* m.space(-15, { t60: 0.84, size: 1.1, damp: 3800, width: 0.3 });
     return m.glue(2.2);
   });
   R('fs.horn.A4', { variants: 1, bus: 'fs', stereo: true, notes: ['A4'], target: { sustainDb: HORN_SUSTAIN, win: [0.05, 0.2] }, maxDur: 0.8 }, function* (rng) {
     const m = new Mix(0.8);
     m.addSt(yield* horn(rng, note('A4'), 0.22, { release: 0.12 }), 0, 0);
-    yield* m.space(-17, { t60: 0.6, size: 0.9, damp: 3800, width: 0.6 });
+    yield* m.space(-17, { t60: 0.6, size: 0.9, damp: 3800, width: 0.3 });
     return m;
   });
   R('fs.horn.D5', { variants: 1, bus: 'fs', stereo: true, notes: ['D5'], target: { sustainDb: HORN_SUSTAIN + 0.5, win: [0.05, 0.2] }, maxDur: 1.3 }, function* (rng) {
     const m = new Mix(1.3);
     m.addSt(yield* horn(rng, note('D5'), 0.6, { release: 0.16 }), 0, 0);
-    yield* m.space(-17, { t60: 0.6, size: 0.9, damp: 3800, width: 0.6 });
+    yield* m.space(-17, { t60: 0.6, size: 0.9, damp: 3800, width: 0.3 });
     return m;
   });
   // the 15-count: brass shell clicks tuned to F5 (the engine climbs F-major pentatonic with playbackRate)
@@ -1037,7 +1044,7 @@
     m.add(boom(rng, note('F2'), { t60: 0.3, drive: 2.6, lp: 1500 }), 0.002, -6);
     RELOAD.forEach((nm, i) => m.add(shell(rng, note(nm), { t60: 0.11 }), 0.234 + i * 0.1172, -6 + i * 0.4, -0.4 + i * 0.2));
     m.add(breech(rng), 0.82, -3);
-    yield* m.space(-16, { t60: 0.5, size: 0.9, damp: 3800, width: 0.5 });
+    yield* m.space(-16, { t60: 0.5, size: 0.9, damp: 3800, width: 0.3 });
     return m.glue(2.3);
   });
   // milestones: the horn call stepping up (variants: on D, F, G, A, high D).
@@ -1050,7 +1057,7 @@
     // a low brass under the last note: the step feels bigger
     const lo = c[0].replace(/\d$/, d => String(+d - 1));
     m.addSt(yield* stab(rng, [lo], { t60: 0.35, fc0: 1400, fc1: 500, hold: 0.05 }), 0.2344, -10);
-    yield* m.space(-16, { t60: 0.5, size: 0.9, damp: 3800, width: 0.5 });
+    yield* m.space(-16, { t60: 0.4, size: 0.9, damp: 3800, width: 0.3 });
     return m;
   });
   // last free spin: the horn fragment A4 -> D5, soft
@@ -1058,19 +1065,19 @@
     const m = new Mix(1.1);
     m.addSt(yield* horn(rng, note('A4'), 0.2, { release: 0.1, bright: 4.5 }), 0, -1.5);
     m.addSt(yield* horn(rng, note('D5'), 0.3, { release: 0.15, bright: 4.5 }), 0.2344, 0);
-    yield* m.space(-15, { t60: 0.6, size: 1, damp: 3800, width: 0.5 });
+    yield* m.space(-15, { t60: 0.6, size: 1, damp: 3800, width: 0.3 });
     return m;
   });
   // the storm passes: a Bb pad (Bb2 F3 D4) resolves to G minor (G2 D3 Bb3) over ~1.8 s, and rings out
   R('fs.outro', { variants: 1, bus: 'fs', stereo: true, notes: ['Bb2', 'F3', 'D4', 'F4', 'G2', 'D3', 'Bb3', 'D5', 'Bb4'], target: { lufs: -18 }, marks: { resolve: 0.82 }, maxDur: 2.8 }, function* (rng) {
     const m = new Mix(2.8);
     m.add(tine(rng, note('D5'), { t60: 0.6, len: 0.6, bright: -16 }), 0, -6, -0.2);
-    m.addSt(yield* pad(rng, ['Bb2', 'F3', 'D4', 'F4'], 0.8, { attack: 0.05, release: 0.35, fc: 2000 }), 0, -1);
-    m.addSt(yield* pad(rng, ['G2', 'D3', 'Bb3', 'D4'], 0.75, { attack: 0.22, release: 0.55, fc: 1800 }), 0.82, 0);
+    m.addSt(yield* pad(rng, ['Bb2', 'F3', 'D4', 'F4'], 0.8, { attack: 0.05, release: 0.35, fc: 2000, spread: 0.2 }), 0, -1);
+    m.addSt(yield* pad(rng, ['G2', 'D3', 'Bb3', 'D4'], 0.75, { attack: 0.22, release: 0.55, fc: 1800, spread: 0.2 }), 0.82, 0);
     m.add(tine(rng, note('Bb4'), { t60: 0.8, len: 0.82, bright: -16 }), 0.84, -6, 0.25);    // the resolution rings on a high Bb (the minor third)
     const rb = yield* rumble(rng, 1.6, { fc: 360, rolls: 3, drive: 2, lp: 1600, width: 0.3 });   // the last of the storm, far away
     m.addSt(rb, 0.15, -16);
-    yield* m.space(-15, { t60: 0.9, size: 1.1, damp: 3500, width: 0.5 });
+    yield* m.space(-15, { t60: 0.9, size: 1.1, damp: 3500, width: 0.3 });
     return m;
   });
   // big-win tier beds (~2 s, the big-win hold is 2.2 s) on Gm, Bb, Dm, F: bigger tier = lower, longer, wider.
@@ -1088,14 +1095,14 @@
       const m = new Mix(len);
       m.addSt(crack(rng, { len: 0.06, t60: 0.02 + k * 0.006, lo: 1500, hi: 8000, crackles: 2 + k * 2, stereo: true }), 0, -8 + k);
       m.addSt(yield* stab(rng, T.stab, { t60: 0.35 + k * 0.08, fc0: 2600, fc1: 800, hold: 0.04, spread: 0.2 + k * 0.08 }), 0.001, -3);
-      m.addSt(yield* pad(rng, T.pad, T.hold, { attack: 0.12, release: 0.6 + k * 0.05, fc: 1100 + k * 150, spread: 0.25 + k * 0.1 }), 0.02, -8);
+      m.addSt(yield* pad(rng, T.pad, T.hold, { attack: 0.12, release: 0.6 + k * 0.05, fc: 1100 + k * 150, spread: 0.15 + k * 0.07 }), 0.02, -8);
       T.arp.forEach((nm, i) => m.add(tine(rng, note(nm), { t60: 0.5, len: 0.55, bright: -11 }), 0.06 + i * 0.07, -10, (i / 3 * 2 - 1) * (0.3 + k * 0.15)));
       if (T.boom) m.add(boom(rng, note(T.boom), { t60: 0.5 + k * 0.15, drive: 3, even: 0.4, lp: 1500, sub: k >= 2 }), 0.002, -5);
       if (T.horn) for (let i = 0; i < T.horn.length; i++) m.addSt(yield* horn(rng, note(T.horn[i]), i === T.horn.length - 1 ? 0.4 : 0.1, { release: 0.18 }), 0.12 + i * 0.1172, -7);
       if (k >= 2) {                                          // coins under the big tiers (money)
         for (let c = 0; c < 2 + k * 3; c++) m.add(coin(rng, note(pick(rng, COIN_NOTES))), 0.08 + pw(rng(), 1.3) * 0.7, -18 - rr(rng, 0, 6), rr(rng, -0.7, 0.7));
       }
-      yield* m.space(-16 + k, { t60: 0.72 + k * 0.12, size: 0.9 + k * 0.1, damp: 3500, width: 0.5 });
+      yield* m.space(-16 + k, { t60: 0.72 + k * 0.12, size: 0.9 + k * 0.1, damp: 3500, width: 0.3 });
       return m.glue(1.8);
     });
   });
@@ -1106,13 +1113,14 @@
     m.addSt(yield* horn(rng, note('A4'), 0.21, { release: 0.1 }), 0.2344, HORN_IN_BREAK);
     m.addSt(yield* horn(rng, note('D5'), 0.55, { release: 0.25 }), 0.4688, HORN_IN_BREAK + 0.5);
     m.addSt(yield* stab(rng, ['F2', 'C3', 'F3', 'A3', 'C4', 'F4'], { t60: 0.6, fc0: 2800, fc1: 900, hold: 0.08, spread: 0.7 }), 0.9375, -3);
-    m.addSt(yield* pad(rng, ['F2', 'C3', 'A3', 'F4'], 0.95, { attack: 0.08, release: 0.7, fc: 1400, spread: 0.5 }), 0.94, -6);
+    m.addSt(yield* pad(rng, ['F2', 'C3', 'A3', 'F4'], 0.95, { attack: 0.08, release: 0.7, fc: 1400, spread: 0.35 }), 0.94, -6);
     m.add(boom(rng, note('F2'), { t60: 0.9, drive: 2.6, lp: 1500, sub: true }), 0.9375, -5);
     const casc = ['F5', 'G5', 'A5', 'C6', 'D6', 'F6', 'G6', 'A6', 'C7', 'D7', 'F7'];
     casc.forEach((nm, i) => m.add(tine(rng, note(nm), { t60: 0.6, len: 0.62, bright: -12 }), 0.95 + i * 0.0586, -10 - i * 0.3, (i % 2 ? 1 : -1) * (0.2 + i * 0.06)));
+    yield;
     for (let c = 0; c < 14; c++) m.add(coin(rng, note(pick(rng, COIN_NOTES))), 0.96 + pw(rng(), 1.2) * 1.0, -16 - rr(rng, 0, 7), rr(rng, -0.8, 0.8));
     yield;
-    yield* m.space(-13, { t60: 1.1, size: 1.2, damp: 3500, width: 0.5 });
+    yield* m.space(-13, { t60: 0.95, size: 1.2, damp: 3500, width: 0.3 });
     return m.glue(2.0);
   });
 
@@ -1160,25 +1168,32 @@
   // ======================================================================
   // Measurement (same numbers the renderer gets from ffmpeg, for the runtime fallback)
   // ======================================================================
+  // in-place direct-form-I biquad (its input history lives in x1/x2, so writing y over x is safe)
   function biquad(x, b0, b1, b2, a1, a2) {
-    const y = new Float64Array(x.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-    for (let i = 0; i < x.length; i++) { const v = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x[i]; y2 = y1; y1 = v; y[i] = v; }
-    return y;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < x.length; i++) { const v = b0 * x[i] + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x[i]; y2 = y1; y1 = v; x[i] = v; }
+    return x;
+  }
+  // K-weighted power of the channels summed (a mono render counts twice: dual-mono
+  // plays on both speakers), over the sound plus `pad` seconds of silence
+  function* kPowerG(L, R, pad) {
+    const n = L.length + ns(pad), mono = !R || R === L, pw = new Float64Array(n), x = new Float64Array(n);
+    for (const c of mono ? [L] : [L, R]) {
+      x.fill(0); x.set(c);
+      biquad(x, 1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585);
+      biquad(x, 1, -2, 1, -1.99004745483398, 0.99007225036621);
+      for (let i = 0; i < n; i++) pw[i] += x[i] * x[i] * (mono ? 2 : 1);
+      yield;
+    }
+    const cs = new Float64Array(n + 1); for (let i = 0; i < n; i++) cs[i + 1] = cs[i] + pw[i];
+    return cs;                                              // cumulative: the energy of [a, b) is cs[b] - cs[a]
   }
   // BS.1770-4 integrated loudness at 48 kHz, with 0.5 s of silence after the
   // sound so short effects still fill a 400 ms block (render-sfx pads the same way)
-  function loudness(L, R) {
-    const pad = ns(0.5), n = L.length + pad, chans = R && R !== L ? [L, R] : [L];
-    const pw = new Float64Array(n);
-    for (const c of chans) {
-      const x = new Float64Array(n); for (let i = 0; i < c.length; i++) x[i] = c[i];
-      const k1 = biquad(x, 1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585);
-      const k2 = biquad(k1, 1, -2, 1, -1.99004745483398, 0.99007225036621);
-      for (let i = 0; i < n; i++) pw[i] += k2[i] * k2[i];
-    }
-    if (chans.length === 1 && R === L) for (let i = 0; i < n; i++) pw[i] *= 2;     // dual-mono plays on both speakers
-    const blk = ns(0.4), hop = ns(0.1), blocks = [];
-    for (let s = 0; s + blk <= n; s += hop) { let e = 0; for (let i = s; i < s + blk; i++) e += pw[i]; blocks.push(e / blk); }
+  const loudness = (L, R) => loudnessOf(run(kPowerG(L, R, 0.5)));
+  function loudnessOf(cs) {
+    const n = cs.length - 1, blk = ns(0.4), hop = ns(0.1), blocks = [];
+    for (let s = 0; s + blk <= n; s += hop) blocks.push((cs[s + blk] - cs[s]) / blk);
     const lk = e => -0.691 + 10 * log(e) / LN10;
     let g = blocks.filter(e => e > 0 && lk(e) > -70);
     if (!g.length) return -70;
@@ -1189,16 +1204,9 @@
   // Short-window loudness: the loudest 100 ms (hop 5 ms) of K-weighted power,
   // in LUFS. Clicks and hits are shorter than an integrated-LUFS block; this is
   // how loud they sound, where a sample peak only says how tall their spike is.
-  function punch(L, R) {
-    const W = ns(0.1), hop = ns(0.005), n = L.length + W, mono = !R || R === L;
-    const pw = new Float64Array(n);
-    for (const c of mono ? [L] : [L, R]) {
-      const x = new Float64Array(n); for (let i = 0; i < c.length; i++) x[i] = c[i];
-      const k1 = biquad(x, 1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585);
-      const k2 = biquad(k1, 1, -2, 1, -1.99004745483398, 0.99007225036621);
-      for (let i = 0; i < n; i++) pw[i] += k2[i] * k2[i] * (mono ? 2 : 1);   // dual-mono plays on both speakers
-    }
-    const cs = new Float64Array(n + 1); for (let i = 0; i < n; i++) cs[i + 1] = cs[i] + pw[i];
+  const punch = (L, R) => punchOf(run(kPowerG(L, R, 0.1)));
+  function punchOf(cs) {
+    const W = ns(0.1), hop = ns(0.005), n = cs.length - 1;
     let best = 0; for (let s = 0; s + W <= n; s += hop) { const e = cs[s + W] - cs[s]; if (e > best) best = e; }
     return best > 0 ? -0.691 + 10 * log(best / W) / LN10 : -120;
   }
@@ -1265,11 +1273,12 @@
   }
   // linear playback gain that puts a render on its target (the runtime fallback;
   // tools/render-sfx.js applies the same rules to the decoded sheets)
-  function gainFor(name, out, variant) {
-    const v = variant != null ? variant : out.variant | 0, t = targetOf(name, v), p = Math.max(peakOf(out.L), peakOf(out.R)) || 1;
-    if (t.kind === 'lufs') return db(t.value - loudness(out.L, out.R));
+  const gainFor = (name, out, variant) => run(gainG(name, out, variant != null ? variant : out.variant | 0));
+  function* gainG(name, out, v) {                          // a generator: job() meters in steps too
+    const t = targetOf(name, v), p = Math.max(peakOf(out.L), peakOf(out.R)) || 1;
+    if (t.kind === 'lufs') return db(t.value - loudnessOf(yield* kPowerG(out.L, out.R, 0.5)));
     if (t.kind === 'sustain') return db(t.value - sustain(out.L, out.R, t.win[0], t.win[1]));
-    if (t.kind === 'punch') return Math.min(db(t.value - punch(out.L, out.R)), db(t.cap) / p);
+    if (t.kind === 'punch') return Math.min(db(t.value - punchOf(yield* kPowerG(out.L, out.R, 0.1))), db(t.cap) / p);
     return db(t.value) / p;
   }
 
@@ -1296,12 +1305,13 @@
     if (!r) throw new Error('sfx: no recipe ' + name);
     const v = clampV(r, variant), notes = new Set(), it = r.steps(seedOf(name, v), v);
     const j = { name, variant: v, done: false, steps: 0, out: null, gain: 1, step };
+    let meter = null;
     function step() {
       if (j.done) return true;
       const prev = used; used = notes; j.steps++;
       try {
-        if (!j.out) { const s = it.next(); if (s.done) { j.out = s.value; j.out.variant = v; j.out.notesUsed = Array.from(notes); } }
-        else { j.gain = gainFor(name, j.out, v); j.done = true; }     // the meter gets a step of its own
+        if (!j.out) { const s = it.next(); if (s.done) { j.out = s.value; j.out.variant = v; j.out.notesUsed = Array.from(notes); meter = gainG(name, j.out, v); } }
+        else { const s = meter.next(); if (s.done) { j.gain = s.value; j.done = true; } }     // the meter gets steps of its own
       } finally { used = prev; }
       return j.done;
     }

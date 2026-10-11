@@ -14,7 +14,7 @@
  *   2. normalise the stored audio to −1 dBFS sample peak
  * Slots are packed per bus (ui mono, world and fs stereo) with 60 ms of silence
  * between them (and before the first), encoded to sounds/sfx-<bus>.ogg (Vorbis;
- * ui q4, world/fs q5) and sounds/sfx-<bus>.m4a (AAC 128 kbps). Then each slot is
+ * ui q4, world q5, fs q4, see BUSES) and sounds/sfx-<bus>.m4a (AAC 128 kbps). Then each slot is
  * measured where it will play from, the decoded .ogg (a codec moves sharp peaks
  * by up to ~1 dB), with ffmpeg ebur128: integrated LUFS over the sound plus 0.5 s
  * of silence, sample peak, 4x true peak; UI slots are measured dual-mono, the
@@ -55,8 +55,13 @@ const WORK = path.resolve(arg('--work', path.join(os.tmpdir(), 'gos-render-sfx')
 const ENCODE = !args.includes('--no-encode');
 const CALIBRATE = args.includes('--calibrate');
 const SR = SFX.SR, GAP = 0.06, TARGET_STORE_DB = -1;
-// cutoff: the encoder's own lowpass sits at what the recipes contain (ui is cut at 7.5 kHz, world/fs at 11 kHz)
-const BUSES = { ui: { channels: 1, q: 4, cutoff: 11000 }, world: { channels: 2, q: 5, cutoff: 11500 }, fs: { channels: 2, q: 5, cutoff: 11000 } };
+// cutoff: the encoder's own lowpass sits at what the recipes contain (ui is cut at 7.5 kHz, world/fs at 11 kHz).
+// q: the stingers (fs) are encoded at q4, not q5: since they end in their own
+// tails (~2 s tier beds, a 2.5 s finale) q5 would put the .ogg set ~40 KB over
+// its ~450 KB budget. They are long, dense and play over the music on the
+// stinger bus, the most forgiving material here; the short, transient world
+// and UI sounds keep q5/q4.
+const BUSES = { ui: { channels: 1, q: 4, cutoff: 11000 }, world: { channels: 2, q: 5, cutoff: 11500 }, fs: { channels: 2, q: 4, cutoff: 11000 } };
 const AAC_KBPS = 128;
 const VERSION = 1;
 
@@ -145,11 +150,19 @@ function calibrate() {
   console.log(`calibrated ${Object.keys(table).length} loudness targets -> ${path.relative(process.cwd(), RECIPES_FILE)}`);
 }
 
-// the lag (±maxLag samples) at which `got` best matches `ref` around `start`
-function lagOf(ref, got, start, maxLag) {
-  const N = Math.min(ref.length, 2400); let best = -Infinity, lag = 0;
-  for (let l = -maxLag; l <= maxLag; l++) { let c = 0; for (let i = 0; i < N; i++) c += ref[i] * (got[start + i + l] || 0); if (c > best) { best = c; lag = l; } }
-  return lag;
+// How late a decoded sheet is (samples): for every slot, the lag (±maxLag) at
+// which its first 25 ms best match the render; the median over the slots (one
+// slot can mislead: a tremolo or a ring correlates at several lags)
+function sheetDelay(mine, got, maxLag) {
+  const lags = mine.map(s => {
+    const ref = s.chs[0], N = Math.min(ref.length, 1200); let best = -Infinity, lag = 0;
+    for (let l = -maxLag; l <= maxLag; l++) {     // normalised: a louder stretch of the slot must not win
+      let c = 0, e = 0; for (let i = 0; i < N; i++) { const g = got[s.start + i + l] || 0; c += ref[i] * g; e += g * g; }
+      c /= Math.sqrt(e) || 1; if (c > best) { best = c; lag = l; }
+    }
+    return lag;
+  }).sort((a, b) => a - b);
+  return lags[lags.length >> 1];
 }
 
 // ---------------- render ----------------
@@ -187,12 +200,11 @@ async function main() {
       await ffmpeg(['-y', '-loglevel', 'error', '-i', wav, '-c:a', 'libvorbis', '-q:a', String(BUSES[bus].q), '-cutoff', String(BUSES[bus].cutoff)].concat(common, [path.join(ROOT, ogg)]));
       await ffmpeg(['-y', '-loglevel', 'error', '-i', wav, '-c:a', 'aac', '-b:a', AAC_KBPS + 'k', '-movflags', '+faststart'].concat(common, [path.join(ROOT, m4a)]));
       decoded[bus] = decode(path.join(ROOT, ogg), ch);
-      // codec delay, measured on the first slot (each sheet opens with 60 ms of silence):
-      // what the engine must add to every offset, per format
-      const first = mine[0], ref = first.chs[0];
-      f.delay = { ogg: lagOf(ref, decoded[bus][0], first.start, 1100), m4a: lagOf(ref, decode(path.join(ROOT, m4a), ch)[0], first.start, 1100) };
-      f.priming = { m4a: lagOf(ref, decode(path.join(ROOT, m4a), ch, ['-ignore_editlist', '1'])[0], first.start, 1100) - f.delay.m4a };
-      f.firstOnset = first.start + first.onset;
+      // codec delay, measured: what the engine must add to every offset, per format
+      // (firstOnset lets it check one slot per sheet: each sheet opens with 60 ms of silence)
+      f.delay = { ogg: sheetDelay(mine, decoded[bus][0], 1100), m4a: sheetDelay(mine, decode(path.join(ROOT, m4a), ch)[0], 1100) };
+      f.priming = { m4a: sheetDelay(mine, decode(path.join(ROOT, m4a), ch, ['-ignore_editlist', '1'])[0], 1100) - f.delay.m4a };
+      f.firstOnset = mine[0].start + mine[0].onset;
     }
     const size = p => fs.existsSync(path.join(ROOT, p)) ? fs.statSync(path.join(ROOT, p)).size : 0;
     f.bytes = { ogg: size(ogg), m4a: size(m4a) };
