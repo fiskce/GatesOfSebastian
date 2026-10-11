@@ -474,7 +474,7 @@
     }
     return null;
   }
-  G.pointer = null; G.pointerN = { x: 0, y: 0 };
+  G.pointer = null;
   G.canvas.addEventListener('pointerdown', e => {
     AudioEngine.resume();
     const p = localXY(e); G.pointer = p;
@@ -494,18 +494,15 @@
   });
   G.canvas.addEventListener('pointermove', e => {
     G.pointer = localXY(e);
-    G.pointerN = { x: (G.pointer.x / G.W) * 2 - 1, y: (G.pointer.y / G.H) * 2 - 1 };
-    if (!deviceTilt && e.pointerType === 'mouse') { FX.cam.tiltTarget.x = G.pointerN.x; FX.cam.tiltTarget.y = G.pointerN.y; }
   });
   // phones: tilt the world with the device (relative to how it was held at first)
-  let deviceTilt = false, base = null;
+  let base = null;
   const screenAngle = () => {
     const a = screen.orientation && typeof screen.orientation.angle === 'number' ? screen.orientation.angle : (window.orientation || 0);
     return ((a % 360) + 360) % 360;
   };
   function onOrient(e) {
     if (e.gamma == null || e.beta == null) return;
-    deviceTilt = true;
     const a = screenAngle();
     const [x, y] = a === 90 ? [e.beta, -e.gamma] : a === 270 ? [-e.beta, e.gamma] : a === 180 ? [-e.gamma, -e.beta] : [e.gamma, e.beta];
     const now = performance.now();
@@ -659,6 +656,7 @@
     ]).catch(() => {}).then(() => { pFonts = 1; show(); }) : Promise.resolve();
     const t0 = performance.now();
     await Promise.all([fonts, B.loadAssets(p => { pAssets = p; show(); })]);
+    await window.PREROLL;                 // the "Only on Stake" sting plays first
     G.onLayout();
     B.setBoard(E.newBoard(Math.random, E.CONFIG.pScatterBase));
     G.UI.init();

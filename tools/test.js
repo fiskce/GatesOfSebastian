@@ -81,6 +81,7 @@ ok('every asset the game loads exists and is precached by the service worker', (
   const manifest = JSON.parse(read('manifest.json')).icons.map(i => i.src);
   for (const f of [...refs, ...css, ...symbols, ...sounds, ...manifest, 'manifest.json']) {
     assert.ok(fs.existsSync(path.join(root, f)), 'referenced file missing: ' + f);
+    if (/\.(mp4|webm)$/.test(f)) continue;    // video is streamed from the network, never cached
     assert.ok(core.includes(f), 'not precached by sw.js: ' + f);
   }
 });

@@ -111,7 +111,7 @@ window.GOS = (() => {
   };
   const touch = typeof navigator !== 'undefined' && (navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
   G.settings = { volume: 0.7, music: true, sfx: true, turbo: false, reducedMotion: false, introSeen: false,
-    quality: 'auto', tilt: true, haptics: touch, dynMusic: true };
+    quality: 'auto', tilt: false, haptics: touch, dynMusic: true };
   G.baseBet = () => G.BET_STEPS[G.S.betIndex];
   G.spinCost = () => G.baseBet() * (G.S.ante ? E.ANTE_COST : 1);
   G.buyCost = () => G.baseBet() * E.BUY_COST_X;
@@ -210,18 +210,18 @@ window.GOS = (() => {
     L.hintH = Math.round(G.clamp(H * 0.045, 22, 40));
     L.fp = Math.round(G.clamp(m * 0.022, 10, 24));
     const contentW = Math.min(W, 1640);
-    const cx0 = (W - contentW) / 2;
     const leftW = Math.round(G.clamp(contentW * 0.135, 120, 220));
-    const rightW = Math.round(G.clamp(contentW * 0.22, 170, 360));
     const sideGap = L.pad * 1.6;
     const bandY = L.topH, bandH = H - L.topH - L.botH - L.hintH;
-    const maxGridW = contentW - leftW - rightW - sideGap * 4;
-    gridFit(L, cx0 + leftW + sideGap * 2, bandY, maxGridW, bandH);
-    // keep the board centred on screen when there is room for it
+    // the board is centred on screen: the same width is kept free on both sides
+    // (left: buy / bet / multiplier panels; right: logo and Sebastian)
+    const sideW = Math.max(leftW, Math.round(G.clamp(contentW * 0.2, 150, 330)));
+    const maxGridW = contentW - (sideW + sideGap * 2) * 2;
+    gridFit(L, W / 2 - maxGridW / 2, bandY, maxGridW, bandH);
     const r = L.reel;
     L.left = { x: r.x - sideGap - leftW, y: r.y, w: leftW, h: r.h };
     const rx = r.x + r.w + sideGap;
-    L.right = { x: rx, y: 0, w: Math.max(rightW, Math.min(W - rx - L.pad, rightW * 1.2)), h: H - L.botH };
+    L.right = { x: rx, y: 0, w: G.clamp(W - rx - L.pad, 80, 400), h: H - L.botH };
     L.bottom = { x: 0, y: H - L.botH, w: W, h: L.botH };
     L.hintY = r.y + r.h + L.hintH * 0.55;
     // left column: buy / bet+ante / multiplier collector

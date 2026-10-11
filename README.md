@@ -1,6 +1,6 @@
 # Gates of Sebastian ⚡
 
-A Gates of Olympus–style tumbling slot (v8). Sebastian stands on a cloud above Olympus and fires multiplier orbs from his shotgun. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies. It installs as an app and plays offline.
+A Gates of Olympus–style tumbling slot (v8). The game opens with the "Only on Stake" sting. Sebastian stands on a cloud above Olympus and fires multiplier orbs from his shotgun. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies. It installs as an app and plays offline.
 
 ![Base game: lightning links a winning cluster](docs/base-game.jpg)
 ![Free spins: the storm grows with the multiplier](docs/free-spins.jpg)
@@ -16,7 +16,7 @@ python3 -m http.server 8000      # then visit http://localhost:8000
 
 Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts and synthesized sound. Offline/install support also needs it to be served (https or localhost).
 
-**Controls:** Space or Enter spins. Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet, T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations. Move the mouse, or tilt your phone, for parallax.
+**Controls:** Space or Enter spins. Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet, T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations.
 
 ## What's new in v8
 
@@ -27,7 +27,7 @@ Presentation only: the payout math is byte-for-byte the v7 engine (`tools/test.j
 - **Lightning chains** link every symbol of a winning cluster. When they shatter, their sparks **stream into the TUMBLE WIN plaque**, which counts up as each one lands.
 - During a scatter tease the **camera pushes in** on each held column, the world darkens and a heartbeat takes over the music.
 - **Slow motion** when a 100×+ orb lands and when the scatter that completes a trigger drops.
-- **Parallax**: the board and sky shift against each other with the mouse or the phone's tilt.
+- **Phone tilt** (opt-in in Settings): the board and sky shift against each other as you tilt your phone.
 
 **Sebastian comes alive**
 - He **turns to aim** at the cell before he fires, leans in during teases, wiggles his head on a near miss and **jumps** at every big-win tier.
@@ -43,7 +43,7 @@ Presentation only: the payout math is byte-for-byte the v7 engine (`tools/test.j
 - **Installable and offline** (PWA): add it to a home screen and it runs without a connection.
 - **Adaptive quality**: it measures its own frame time and trims effects, particles and resolution on weak devices (and steps back up when there's headroom). Settings: Auto / High / Medium / Low.
 - **Stats and achievements**: session and all-time stats, 13 achievements with toasts (the trophy icon).
-- **Vibration** on big moments (Android), plus settings for dynamic music, motion tilt and reduced motion (which also turns off shake, zoom, push-in, tilt and flips).
+- **Vibration** on big moments (Android), plus settings for dynamic music, phone tilt and reduced motion (which also turns off shake, zoom, push-in, tilt and flips).
 - Lightning and flashes are capped at 3 strong flashes per second (WCAG 2.3.1).
 
 ## v7: the rebuild from v6

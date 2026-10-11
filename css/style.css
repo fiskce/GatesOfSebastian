@@ -38,6 +38,11 @@ body { font-family: var(--ui); color: var(--text); -webkit-tap-highlight-color: 
 .title-sm { font-size: clamp(20px, 4vw, 40px); letter-spacing: .12em; }
 .title { font-size: clamp(36px, 8.5vw, 92px); letter-spacing: .04em; }
 
+/* ---------- "Only on Stake" preroll (above everything while it plays) ---------- */
+#preroll { position: fixed; inset: 0; z-index: 60; background: #000; transition: opacity .4s ease; }
+#preroll video { width: 100%; height: 100%; object-fit: contain; display: block; }
+#preroll.done { opacity: 0; pointer-events: none; }
+
 /* ---------- loader ---------- */
 #loader { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
   background: radial-gradient(ellipse at 50% 38%, #3a1a6e, var(--ink) 72%); transition: opacity .6s ease; text-align: center; }

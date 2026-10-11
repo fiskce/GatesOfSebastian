@@ -225,15 +225,13 @@
       ctx.drawImage(rays, -rs / 2, -rs / 2); ctx.restore();
     }
     ctx.globalCompositeOperation = 'source-over';
-    // drifting clouds, parallax with the pointer
-    const px = (G.pointerN ? G.pointerN.x : 0), py = (G.pointerN ? G.pointerN.y : 0);
+    // drifting clouds
     for (const c of clouds) {
       c.x += dt * 9 * c.d * (1 + mood) * (1 + stormK * 2);
       if (c.x > W + 320) c.x = -360;
       const w = 360 * c.s * (W / 1400 + 0.4), h = 150 * c.s * (W / 1400 + 0.4);
-      const ox = -px * 10 * c.d, oy = -py * 6 * c.d;
-      if (mood < 1) { ctx.globalAlpha = c.a * (1 - mood); ctx.drawImage(cloudSprites[0][c.v], c.x + ox, c.y + oy, w, h); }
-      if (mood > 0) { ctx.globalAlpha = c.a * mood; ctx.drawImage(cloudSprites[1][c.v], c.x + ox, c.y + oy, w, h); }
+      if (mood < 1) { ctx.globalAlpha = c.a * (1 - mood); ctx.drawImage(cloudSprites[0][c.v], c.x, c.y, w, h); }
+      if (mood > 0) { ctx.globalAlpha = c.a * mood; ctx.drawImage(cloudSprites[1][c.v], c.x, c.y, w, h); }
     }
     ctx.globalAlpha = 1;
 

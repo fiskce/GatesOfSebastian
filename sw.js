@@ -8,12 +8,13 @@
  *  - art, fonts, sounds: cache first
  * Bump VERSION on every release.
  */
-const VERSION = 'gos8-core-1';
+const VERSION = 'gos8-core-2';
 const MEDIA = 'gos8-media';
 const CORE = [
   './',
   'manifest.json',
   'css/style.css',
+  'js/preroll.js',
   'js/engine.js',
   'js/fair.js',
   'js/symbols.js',
@@ -99,6 +100,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || !req.url.startsWith(self.registration.scope)) return;
   const path = new URL(req.url).pathname;
+  if (/\.(mp4|webm)$/.test(path)) return;      // video streams need real range responses; leave them to the network
   const code = req.mode === 'navigate' || /\.(html|js|css|json)$/.test(path) || path.endsWith('/');
   e.respondWith(code ? networkFirst(req) : cacheFirst(req));
 });

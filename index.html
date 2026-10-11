@@ -16,6 +16,15 @@
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
+  <!-- "Only on Stake" preroll: the first thing on screen; the game loads behind it -->
+  <div id="preroll" aria-hidden="true">
+    <video id="prerollVideo" playsinline preload="auto" disablepictureinpicture disableremoteplayback>
+      <source src="assets/video/only-on-stake.webm" type="video/webm; codecs=vp9,opus">
+      <source src="assets/video/only-on-stake.mp4" type="video/mp4">
+    </video>
+  </div>
+  <script src="js/preroll.js"></script>
+
   <canvas id="game" tabindex="0" aria-label="Gates of Sebastian slot game. Space to spin, arrow keys change the bet, T toggles turbo, I opens the rules."></canvas>
   <div id="live" class="sr-only" aria-live="polite"></div>
 
@@ -101,7 +110,7 @@
         <select id="qualitySelect">
           <option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
         </select></label>
-      <label class="row"><span>Motion tilt <small>(mouse / phone tilt parallax)</small></span><input type="checkbox" id="tiltToggle" class="switch" /></label>
+      <label class="row"><span>Phone tilt effect <small>(the board shifts as you tilt your phone)</small></span><input type="checkbox" id="tiltToggle" class="switch" /></label>
       <label class="row" id="hapticsRow"><span>Vibration</span><input type="checkbox" id="hapticsToggle" class="switch" /></label>
       <label class="row"><span>Reduce motion <small>(no shake, zoom or tilt)</small></span><input type="checkbox" id="motionToggle" class="switch" /></label>
       <button id="resetCredit" class="ghost">Reset demo balance</button>
