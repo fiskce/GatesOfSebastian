@@ -142,6 +142,52 @@ ok('a tampered book event is rejected', () => {
   ];
   for (const f of bad) { const e = JSON.parse(JSON.stringify(good)); f(e); assert.throws(() => E.expandSpin(e, 3)); }
 });
+// ---- Stake: wording and the published math ----
+function loadStrings(search) {
+  const vm = require('vm'), fs = require('fs');
+  const sandbox = { window: {}, location: { search }, URLSearchParams, document: { documentElement: { classList: { toggle() {} } }, querySelectorAll: () => [] } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'strings.js'), 'utf8'), sandbox);
+  return sandbox.window.GOS_STR;
+}
+ok('social casino wording has none of the restricted words', () => {
+  const STR = loadStrings('?social=true');
+  assert.ok(STR.social);
+  const src = require('fs').readFileSync(path.join(__dirname, '..', 'js', 'strings.js'), 'utf8');
+  const keys = [...src.matchAll(/^\s{4}(\w+):/gm)].map(m => m[1]).concat([...src.matchAll(/,\s(\w+):\s[\['\x27]/g)].map(m => m[1]));
+  const re = new RegExp('\\b(' + STR.RESTRICTED.filter(w => !w.includes(' ')).join('|') + ')\\b|win feature', 'i');
+  for (const k of new Set(keys)) {
+    const t = STR.T(k, { v: '1.00 SC', a: 1, b: 2, n: 3, x: '5,000×' }).replace(/<[^>]+>/g, '');
+    assert.ok(!re.test(t), `social "${k}": ${t}`);
+  }
+  assert.ok(loadStrings('?currency=XSC').social, 'a social currency turns social wording on');
+  assert.ok(!loadStrings('').social);
+});
+ok('the published Stake math matches the engine and the rules', () => {
+  const fs = require('fs'), zlib = require('zlib'), dir = path.join(__dirname, '..', 'math');
+  if (!fs.existsSync(path.join(dir, 'index.json'))) { console.log('      (no math/ export; skipped)'); return; }
+  const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
+  const cost = { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X };
+  const info = (() => { const w = {}; require('vm').runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'math-info.js'), 'utf8'), { window: w }); return w.GOS_MATH; })();
+  assert.deepStrictEqual(index.modes.map(m => m.name).sort(), ['ante', 'base', 'bonus']);
+  for (const m of index.modes) {
+    assert.strictEqual(m.cost, cost[m.name], m.name + ' cost');
+    let W = 0n, P = 0n, max = 0;
+    for (const line of fs.readFileSync(path.join(dir, m.weights), 'utf8').trim().split('\n')) {
+      const [, w, pm] = line.split(',').map(BigInt); W += w; P += w * pm; if (Number(pm) > max) max = Number(pm);
+    }
+    const rtp = Number((P * 100000000n) / (W * BigInt(Math.round(m.cost * 100)))) / 1e6;     // percent
+    assert.ok(Math.abs(rtp - 96.5) < 0.001, m.name + ' RTP ' + rtp);
+    assert.strictEqual(max, E.MAX_WIN_X * 100, m.name + ' max win');
+    assert.strictEqual(info.modes[m.name].rtp, 96.5); assert.strictEqual(info.modes[m.name].cost, m.cost);
+    // a sample of books replays through the engine and adds up
+    const lines = zlib.zstdDecompressSync(fs.readFileSync(path.join(dir, m.events))).toString().trim().split('\n');
+    for (let i = 0; i < lines.length; i += Math.max(1, Math.floor(lines.length / 400))) {
+      const b = JSON.parse(lines[i]); let persistent = 0, sum = 0;
+      for (const e of b.events) if (e.type === 'spin') { const o = E.expandSpin(e, e.mode === 'fs' ? persistent : 0); if (e.mode === 'fs') persistent = o.ev.persistentAfter; sum += e.win; }
+      assert.strictEqual(sum, b.payoutMultiplier, m.name + ' book ' + b.id);
+    }
+  }
+});
 ok('every asset the game loads exists and is precached by the service worker', () => {
   const fs = require('fs'), root = path.join(__dirname, '..');
   const read = f => fs.readFileSync(path.join(root, f), 'utf8');

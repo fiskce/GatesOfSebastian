@@ -38,6 +38,9 @@ body { font-family: var(--ui); color: var(--text); -webkit-tap-highlight-color: 
 .title-sm { font-size: clamp(20px, 4vw, 40px); letter-spacing: .12em; }
 .title { font-size: clamp(36px, 8.5vw, 92px); letter-spacing: .04em; }
 
+/* the hidden attribute always wins (buttons here set their own display) */
+[hidden] { display: none !important; }
+
 /* ---------- "Only on Stake" preroll (above everything while it plays) ---------- */
 /* the clip covers the screen when the text stays in view; otherwise (narrow
    screens) a blurred live copy of it fills around it. preroll.js sizes it. */
@@ -81,7 +84,7 @@ body { font-family: var(--ui); color: var(--text); -webkit-tap-highlight-color: 
 #splash.show { opacity: 1; pointer-events: auto; }
 #splash.leaving { opacity: 0; pointer-events: none; transform: scale(1.04); transition: opacity .6s ease, transform .6s ease; }
 .splash-inner { display: flex; align-items: center; gap: clamp(8px, 3vw, 40px); max-width: 1100px; width: 100%; }
-.splash-seb { height: min(72vh, 620px); width: auto; flex: none; filter: drop-shadow(0 0 22px rgba(127, 212, 255, .55)); animation: float 4s ease-in-out infinite; }
+.splash-seb { height: min(72vh, 560px); width: auto; flex: none; filter: drop-shadow(0 0 22px rgba(127, 212, 255, .55)); animation: float 4s ease-in-out infinite; }
 .splash-copy { flex: 1; text-align: center; }
 .splash-copy h1 { margin: 6px 0 22px; }
 .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }
@@ -209,8 +212,9 @@ table.history { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* very short screens (Stake checks 400x225): the splash fits without scrolling */
 @media (max-height: 420px) and (min-aspect-ratio: 1/1) {
   #splash { overflow: hidden; align-items: center; padding: 6px 12px; }
+  .splash-inner { flex-direction: row; gap: 12px; }
   .features { display: none; }
-  .splash-seb { height: 80vh; }
+  .splash-seb { height: 76vh; }
   .presents { font-size: 10px; }
   .title-sm { font-size: clamp(12px, 6.5vh, 22px); }
   .title { font-size: clamp(22px, 14vh, 48px); }
@@ -219,6 +223,11 @@ table.history { width: 100%; border-collapse: collapse; font-size: 13px; }
   .fine { font-size: 10px; margin-top: 6px; }
   .card { padding: 12px 12px 10px; max-height: 94vh; }
   .card h2 { font-size: 17px; margin-bottom: 6px; }
+  .card p { font-size: 13px; margin: 4px 0; }
+  .facts { font-size: 12px; } .facts div { padding: 2px 0; }
+  .replay-facts { margin: 2px 0 6px; }
+  button.primary, button.ghost { margin-top: 8px; padding: 8px 12px; }
+  .btn-row button.primary, .btn-row button.ghost { margin-top: 6px; }
 }
 
 /* rules: modes with their RTP, the controls guide; the replay card */

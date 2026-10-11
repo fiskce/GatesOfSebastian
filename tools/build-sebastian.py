@@ -63,13 +63,13 @@ def sheet(clip, name):
 
 def splash():
     size, fr = frames('sebastian_idle.gif')
-    # crop to the union of the idle frames, 320 px tall
+    # crop to the union of the idle frames, 480 px tall
     boxes = [img.getchannel('A').getbbox() for img, _ in fr]
     u = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
-    k = 320 / (u[3] - u[1])
-    imgs = [img.crop(u).resize((round((u[2] - u[0]) * k), 320), Image.LANCZOS) for img, _ in fr]
+    k = 480 / (u[3] - u[1])
+    imgs = [img.crop(u).resize((round((u[2] - u[0]) * k), 480), Image.LANCZOS) for img, _ in fr]
     imgs[0].save(os.path.join(ROOT, 'assets', 'sebastian', 'splash.webp'), 'WEBP', save_all=True, append_images=imgs[1:],
-                 duration=[d for _, d in fr], loop=0, quality=78, method=6)
+                 duration=[d for _, d in fr], loop=0, quality=72, method=6)
     print('splash: %d KB' % (os.path.getsize(os.path.join(ROOT, 'assets', 'sebastian', 'splash.webp')) // 1024))
 
 size, idle = sheet('idle', 'idle.webp')

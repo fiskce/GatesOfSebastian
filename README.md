@@ -1,10 +1,15 @@
-# Gates of Sebastian ⚡
+# Thunder Hunter Sebastian ⚡
 
-A Gates of Olympus–style tumbling slot (v8). The game opens with the "Only on Stake" sting. Sebastian stands on a cloud above Olympus and fires multiplier orbs from his shotgun. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies. It installs as an app and plays offline.
+A tumbling, pay-anywhere slot (v9, formerly *Gates of Sebastian*). Sebastian the hunter stands on a cloud, shotgun in one hand and his fox in the other, and fires multiplier orbs into the board. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies.
+
+It runs two ways:
+
+- **Demo** (no URL parameters, as on fiskce.com): a local balance, outcomes from a provably-fair random stream, installable and playable offline.
+- **Stake Engine** (`?sessionID=…&rgs_url=…`): every round comes from Stake's RGS, played from the math files this repo exports. Bet replays work too (`?replay=true…`).
 
 ![Base game: lightning links a winning cluster](docs/base-game.jpg)
 ![Free spins: the storm grows with the multiplier](docs/free-spins.jpg)
-<img src="docs/phone.jpg" alt="Phone: Sebastian cuts in on a Mega Win" width="260">
+<img src="docs/phone.jpg" alt="Phone: Sebastian fires over the board" width="260">
 
 ## Play
 
@@ -16,28 +21,73 @@ python3 -m http.server 8000      # then visit http://localhost:8000
 
 Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts and synthesized sound. Offline/install support also needs it to be served (https or localhost).
 
-**Controls:** Space or Enter spins. Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet, T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations.
+**Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet, T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations. The rules list every control.
 
-## What's new in v8
+## What's new in v9
+
+**Playable on Stake Engine** (`js/rgs.js`)
+- With `sessionID` and `rgs_url` in the URL the game signs in with `/wallet/authenticate` while it loads. The balance, currency, bet levels, default bet and jurisdiction flags all come from the RGS. If the RGS can't be reached it says so and stops; it never falls back to the demo.
+- A round is one `/wallet/play {sessionID, amount, mode}` (`base`, `ante` or `bonus`). Its book events are rebuilt by `Engine.expandSpin` and animated by exactly the same code as a demo spin. `/wallet/end-round` is sent only for a round that is still open, and is retried if it fails. `/wallet/play` is never retried: a lost answer may already have been charged.
+- An unfinished round (a closed tab, a dropped connection) is offered first on the next launch. It plays out at its original bet and is then closed.
+- The balance is checked before every round, autoplay and buy, and nothing is sent when it is too low. Saved bets and balances are ignored in Stake play; only settings are kept.
+- Jurisdiction flags hide autoplay, turbo, the buy feature, fullscreen, slam-stop and Space to spin, and a minimum round length is honoured.
+- **Replay** (`?replay=true&game=&version=&mode=&event=&amount=`) fetches `/bet/replay/…` and shows the mode, the bet and, for ante and bonus, the real cost. Then it plays the round and offers to play it again. No wallet calls, no balance.
+- **Social casino wording** (`social=true`, an XSC/XGC currency or the RGS's `socialCasino` flag): every visible string comes from `js/strings.js`, which has a neutral or social variant for bet, buy, credit, stake, pay and paytable.
+- **Currencies:** symbol and decimals per currency (USD, EUR, CAD, MXN, JPY with no decimals, SC/GC after the amount, and more). Sub-cent amounts show the digits they need.
+- **Rules** are built from the published math: RTP per mode, max win, how the cap ends a round, a guide to every control and the standard disclaimer. The odds claims are gone.
+- A **compact layout** for very short windows (Stake checks 400×225), and a splash that fits without scrolling.
+- No service worker, manifest, provably-fair panel, stats or "reset balance" in Stake or replay play.
+
+**Stake math files** (`tools/export-math.js`, output in `math/`)
+- Books are played by this repo's engine, so they are exactly what the demo plays: `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base` (cost 1), `ante` (1.25) and `bonus` (100).
+- Books are sampled in buckets (0 / base-game win / free spins / max win) with their natural probabilities. Max-win rounds are found by search, so 5,000× is in every mode. Weights are then scaled so each mode's RTP is exactly **96.50%** (the scaling stays within 3% of natural). The exporter reads every file back from disk and checks ids, weights, payouts and every event against the engine.
+- `js/math-info.js` (generated) carries the RTP and max win the rules show.
+
+| Mode | Books | RTP | Hit rate | Max |
+|---|---|---|---|---|
+| base | 95,010 | 96.5000% | 26.2% | 5,000× |
+| ante | 95,006 | 96.5000% | 26.2% | 5,000× |
+| bonus | 30,020 | 96.5000% | 99.3% | 5,000× |
+
+```bash
+node tools/export-math.js                 # ~5 minutes on 4 cores, writes math/ and js/math-info.js
+node tools/export-math.js --scale 4       # 4x the books per bucket
+```
+
+**A local RGS for testing** (`tools/mock-rgs.js`): it serves the game and the books and implements the wallet and replay endpoints, with switches for bet levels, balances, forced books, injected errors and lost responses.
+
+```bash
+node tools/mock-rgs.js     # then open http://localhost:8125/?sessionID=demo1&rgs_url=localhost:8125
+```
+
+**New Sebastian.** He is now hand-drawn artwork with two animations (`art/sebastian_idle.gif`, `art/sebastian_shoot.gif`). In the idle loop he breathes, blinks and the fox sways. For every orb he raises the shotgun over the edge of the board, winks, and fires on the frame with the muzzle flash, so the bolt leaves the barrel. Then the smoke clears and he lowers the gun. `tools/build-sebastian.py` packs the clips into sprite sheets.
+
+**Also new**
+- The "Only on Stake" sting fills the screen (a blurred copy fills around it on narrow screens). It plays with sound, and when the browser blocks sound it waits behind TAP TO START. It is skipped offline, in replays and in social play.
+- New soundtracks for the base game and free spins, looped on the hit each file ends with. Free spins crossfade to their own track.
+- No camera zoom when rolling into a feature.
+- Renamed **Thunder Hunter Sebastian**, with local favicons.
+
+## v8
 
 Presentation only: the payout math is byte-for-byte the v7 engine (`tools/test.js` pins it with a fingerprint of 5,000 spins).
 
 **A living board and camera**
 - Gems breathe: light sweeps across them, now and then one turns over in 3D, and a glint runs diagonally across every freshly landed board.
 - **Lightning chains** link every symbol of a winning cluster. When they shatter, their sparks **stream into the TUMBLE WIN plaque**, which counts up as each one lands.
-- During a scatter tease the **camera pushes in** on each held column, the world darkens and a heartbeat takes over the music.
+- During a scatter tease the world darkens and a heartbeat takes over the music (v8 also pushed the camera in; v9 dropped that).
 - **Slow motion** when a 100×+ orb lands and when the scatter that completes a trigger drops.
 - **Phone tilt** (opt-in in Settings): the board and sky shift against each other as you tilt your phone.
 
 **Sebastian comes alive**
-- He **turns to aim** at the cell before he fires, leans in during teases, wiggles his head on a near miss and **jumps** at every big-win tier.
-- On big wins he **slides in over the celebration**; in free spins his **eyes glow**.
+- He leans in during teases, wiggles his head on a near miss and **jumps** at every big-win tier.
+- On big wins he **slides in over the celebration**.
 - **Speech bubbles** ("Bullseye!", "Hold my fox…", "So close…"), rate-limited so he never nags. None of them suggest a win is due.
 
 **Bigger free spins**
 - The **storm grows with the total multiplier**: more lightning, a crimson sky, faster clouds, slanting rain and a low rumble.
 - **Milestones** at ×25, ×50, ×100, ×250 and ×500 total multiplier get their own headline, thunder and a quip.
-- **Adaptive music**: a drum layer under the soundtrack that is silent at rest, pulses while the reels spin, builds with every cascade and drives free spins.
+- **Adaptive music**: a heartbeat during teases and a storm rumble in free spins under the soundtrack.
 
 **Polish and reach**
 - **Installable and offline** (PWA): add it to a home screen and it runs without a connection.
@@ -99,42 +149,55 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 - **Tumble:** winners are removed, the rest fall and new symbols drop in. This repeats while wins keep forming.
 - **Multiplier orbs:** 2, 3, 4, 5, 6, 8, 10, 25, 50, 100, 250 or 500×. In the base game, the orbs from one spin add up and multiply that spin.
 - **Free spins:** 4+ scatters award 15 spins. Every orb is saved into a total multiplier that applies to each winning spin. 3+ scatters in the feature add +5.
-- **Double Chance:** +25% stake for 1.74× the natural trigger rate. **Buy:** 100× bet, with ante off.
+- **Double Chance:** costs 1.25× the bet; free spins trigger more often. **Buy:** 100× bet, with ante off.
+- **Max win:** 5,000× the bet per round; reaching it ends the round, free spins included.
+- Scatters are counted once all tumbles have finished and don't win on their own.
 
 ## Customising
 
 | What | Where |
 |---|---|
 | Symbol art | Replace PNGs in `assets/symbols/` (keep the names), or edit `SYMBOL_IMAGES` in `js/board.js`. Use `''` for the built-in vector gem. |
-| Sebastian | Replace `assets/sebastian.png` with a tall image on a transparent background. It's auto-cropped, and the bolts fire from the left-most opaque pixel, his gun barrel. The eye and head anchors (`EYES`, `HEAD` in `js/sebastian.js`) are measured on the original photo; with a different-sized image the eye glow switches itself off. |
+| Sebastian | Replace `art/sebastian_idle.gif` / `art/sebastian_shoot.gif` (930×825, transparent, feet on the same line) and run `python3 tools/build-sebastian.py` (needs Pillow). The barrel-tip table `TIP` and the frame numbers for aim/fire in `js/sebastian.js` are measured on the current shoot clip. |
+| Wording | `js/strings.js`: every player-visible string, with its social-casino variant. |
+| Currencies | `CURRENCIES` in `js/core.js`. |
 | Quips | `LINES` in `js/sebastian.js`. |
 | Achievements | `ACH` in `js/stats.js`. |
 | Offline cache | `CORE` in `sw.js`; bump `VERSION` on every release. `node tools/test.js` fails if a file the game loads is missing from it. |
 | Sounds | `SOUND_FILES` in `js/audio.js`. Leave `''` to use the synthesized sound. Every other effect is synthesized. |
-| Math | `CONFIG` in `js/engine.js`. Re-run `node tools/sim.js` after any change. |
+| Math | `CONFIG` in `js/engine.js`. Re-run `node tools/sim.js` after any change, then `node tools/export-math.js` for Stake. |
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `js/engine.js` | Pure game math (no DOM): board, tumbles, orbs, evaluate, feature, round. Runs in Node too. |
+| `js/engine.js` | Pure game math (no DOM): board, tumbles, orbs, evaluate, feature, round; book events and `expandSpin`. Runs in Node too. |
+| `js/rgs.js` | Stake Engine: launch parameters, wallet calls, bet levels, jurisdiction flags, replay, book-event spin source |
+| `js/strings.js` | Player-facing wording, normal and social casino |
+| `js/math-info.js` | Generated: RTP and max win per mode, for the rules |
+| `js/seb-frames.js` | Generated: Sebastian's frames in the sprite sheets |
+| `js/preroll.js` | The "Only on Stake" sting: fill, sound, tap to start |
 | `js/fair.js` | Provably-fair commit/reveal RNG with a built-in SHA-256 and HMAC |
 | `js/core.js` | Namespace, game clock (turbo, slow-mo), adaptive quality, easing, formatting, persistence, responsive layout |
 | `js/scene.js` | The world behind the board, in two moods |
 | `js/board.js` | Sprites, tumble physics, frame, anticipation columns, orbs |
 | `js/fx.js` | Particles, lightning, floating text; camera shake, zoom, push-in, tilt; flash limiter |
-| `js/sebastian.js` | Sebastian: pose (aim, lean, jump, recoil), eye glow, speech bubbles, big-win cut-in |
+| `js/sebastian.js` | Sebastian: idle and shoot clips, aim and fire timing, lean, jump, speech bubbles, big-win cut-in |
 | `js/hud.js` | Side panels, logo, plaque, bottom bar, vector icons, hit regions |
 | `js/overlays.js` | Big win, free-spins intro and outro, banners, milestones, multiplier slam |
 | `js/stats.js` | Session and all-time stats, achievements, toasts |
 | `js/game.js` | Spin orchestration, camera, input, render loop, boot, service-worker registration |
 | `js/ui.js` | DOM panels: rules and paytable, settings, fairness and history, stats, buy, menu |
 | `js/audio.js` | Web Audio engine: files plus synth, pitch, ducking, suspense filter |
-| `js/music.js` | Adaptive drum layer and heartbeat under the soundtrack |
+| `js/music.js` | Heartbeat and storm rumble under the soundtrack (a drum layer over the synth fallback) |
 | `sw.js`, `manifest.json` | Offline cache and install metadata |
 | `tools/sim.js` | Multi-threaded RTP simulator |
-| `tools/test.js` | Crypto, determinism, engine invariants, math fingerprint, offline-cache coverage |
+| `tools/test.js` | Crypto, determinism, engine invariants, math fingerprint, book events round-trip, offline-cache coverage |
+| `tools/export-math.js` | Stake Engine math files (books, lookup tables, index) |
+| `tools/mock-rgs.js` | Local stand-in for Stake's RGS, serving the game and the books |
+| `tools/build-sebastian.py` | Sebastian's sprite sheets from `art/` |
+| `math/` | The exported Stake math files |
 
-> For entertainment only. Demo credits, no real-money gambling.
+> The demo is for entertainment only: demo credits, no real-money gambling. Played through Stake Engine, the operator's terms apply.
 
 Fonts: Cinzel and Outfit, SIL Open Font License (`assets/fonts/OFL.txt`). Code: GPL-3.0 (`LICENSE`).

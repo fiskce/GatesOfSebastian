@@ -567,7 +567,7 @@
   let replayData = null;
   Game.startReplay = async () => {
     if (S.busy || !replayData) return;
-    G.UI.closeAll();
+    G.UI.closeAll(true);
     // a fresh board and fresh counters every time
     Object.assign(S, { inFS: false, fsLeft: 0, fsPlayed: 0, fsTotal: 0, fsAward: 0, persistent: 0, fsMilestone: 0, roundWin: 0,
       winDisplay: 0, tumbleWin: 0, tumbleShown: 0, spinMult: 0, moodTarget: 0 });
