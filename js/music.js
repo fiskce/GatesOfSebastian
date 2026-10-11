@@ -1,16 +1,15 @@
 /* Gates of Sebastian — adaptive music layers.
  *
- * A small Web Audio sequencer that plays *under* the music bed and follows the
- * game: silent while idle, a light pulse while the reels spin, building with
- * every cascade, and a full driving groove in free spins that grows with the
- * storm. During a scatter tease it drops to an accelerating heartbeat.
- * Everything is synthesized and routed into the music bus, so the music
- * volume, the suspense filter and the big-win ducking all apply to it.
+ * A small Web Audio layer that plays *under* the soundtrack and follows the
+ * game: an accelerating heartbeat during a scatter tease and a low rumble that
+ * grows with the free-spins storm. Everything is synthesized and routed into
+ * the music bus, so the music volume, the suspense filter and the big-win
+ * ducking all apply to it.
  *
- * The layers are deliberately unpitched (drums, toms, a noise rumble): the
- * music bed is an ambient pad with no steady beat (its onset autocorrelation
- * is flat) and an unknown key, so percussion can carry the pulse without
- * clashing with it.
+ * It also has a drum groove (silent while idle, a pulse while the reels spin,
+ * building with every cascade). That only plays over the synth pad fallback:
+ * the base and free-spins soundtracks have their own beat (108 and 128 BPM),
+ * which a fixed-tempo groove would clash with.
  */
 (() => {
   'use strict';
@@ -58,7 +57,7 @@
 
   function schedule(i, t) {
     const I = intensity;
-    if (I < 0.05 || beat) return;
+    if (I < 0.05 || beat || A.musicTrack) return;
     const bar = Math.floor(i / 16) % 4, s16 = i % 16;
     if (s16 % 4 === 0 && I > 0.15) osc('sine', 150, 42, t, 0.32, 0.55 * I);                          // kick
     if (s16 === 10 && I > 0.7) osc('sine', 150, 42, t, 0.28, 0.35 * I);                               // pickup kick

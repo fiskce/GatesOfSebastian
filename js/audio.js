@@ -18,15 +18,17 @@ const AudioEngine = (() => {
 
   /* ===================================================================
    * SOUND FILES — set a path (ideally .ogg) to use your own audio for a
-   * sound; leave '' to use the built-in synthesized version. 'music' loops.
+   * sound; leave '' to use the built-in synthesized version. The two music
+   * tracks loop (see TRACKS below).
    * =================================================================== */
   const SOUND_FILES = {
-    spin:      'sounds/spin.ogg',
-    thunder:   'sounds/thunder.ogg',
-    scatter:   'sounds/scatter.ogg',
-    freespins: 'sounds/freespins.ogg',
-    click:     'sounds/click.ogg',
-    music:     'sounds/music.ogg',
+    spin:         'sounds/spin.ogg',
+    thunder:      'sounds/thunder.ogg',
+    scatter:      'sounds/scatter.ogg',
+    freespins:    'sounds/freespins.ogg',
+    click:        'sounds/click.ogg',
+    music:        'sounds/music-base.ogg',
+    musicFeature: 'sounds/music-feature.ogg',
   };
 
   if (!ctx) {
@@ -58,7 +60,7 @@ const AudioEngine = (() => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(res.status);
       buffers[name] = await ctx.decodeAudioData(await res.arrayBuffer());
-      if (name === 'music' && musicOn && !musicSrc) { stopSynthMusic(); startMusicBuffer(); }
+      if (musicOn && !cur && TRACKS[mode].file === name) playMode(0.05, 1);   // the track arrived after the synth pad started
     } catch (e) { /* missing/blocked (e.g. file://) -> synth fallback */ }
   }
 
@@ -185,10 +187,49 @@ const AudioEngine = (() => {
   }
 
   // ---------------- music ----------------
-  let musicOn = false, musicSrc = null, musicTimer = null;
+  /* Two soundtracks: the base game and free spins. Each file opens with a short
+   * intro and then loops its body. The loop points sit on the attack of the
+   * hit the file ends on, which is the same hit that opens the body (feature:
+   * 112 beats at 128 BPM; base: about 40 bars), so the loop is seamless. The
+   * base track picks up where it left off after free spins; the feature track
+   * always starts from its intro. */
+  const TRACKS = {
+    base: { file: 'music',        gain: 1.5, loopStart: 0.175, loopEnd: 89.058 },
+    fs:   { file: 'musicFeature', gain: 1.1, loopStart: 2.396, loopEnd: 54.888 },
+  };
+  let musicOn = false, musicTimer = null, mode = 'base', cur = null;
+  const resumeAt = { base: 0, fs: 0 };
   const CHORDS = [[261.63, 329.63, 392.0], [293.66, 349.23, 440.0], [220.0, 277.18, 329.63], [246.94, 311.13, 392.0]];
-  function startMusicBuffer() { musicSrc = playBuffer(buffers.music, 1, 1, musicVol, true); }
+  function startTrack(key, fade) {
+    const tr = TRACKS[key], buf = buffers[tr.file];
+    if (!buf) return false;
+    const src = ctx.createBufferSource(), g = ctx.createGain(), t = ctx.currentTime;
+    src.buffer = buf; src.loop = true;
+    src.loopStart = tr.loopStart; src.loopEnd = Math.min(tr.loopEnd, buf.duration);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(tr.gain, t + Math.max(0.02, fade));
+    src.connect(g); g.connect(musicVol);
+    const off = Math.min(resumeAt[key], src.loopEnd - 0.05);
+    src.start(t, off);
+    cur = { key, src, g, t0: t, off, end: src.loopEnd };
+    return true;
+  }
+  // where in the file a playing track is now (follows the loop)
+  function position(c) {
+    const ls = TRACKS[c.key].loopStart;
+    let p = c.off + (ctx.currentTime - c.t0);
+    if (p > c.end) p = ls + (p - c.end) % (c.end - ls);
+    return p;
+  }
+  function stopTrack(fade) {
+    if (!cur) return;
+    const c = cur; cur = null;
+    resumeAt[c.key] = c.key === 'base' ? position(c) : 0;
+    const t = ctx.currentTime, gn = c.g.gain;
+    gn.cancelScheduledValues(t); gn.setValueAtTime(gn.value, t); gn.linearRampToValueAtTime(0, t + fade);
+    try { c.src.stop(t + fade + 0.05); } catch (e) { /* already stopped */ }
+  }
   function startSynthMusic() {
+    if (musicTimer) return;
     let i = 0;
     const chord = () => {
       const t = ctx.currentTime, c = CHORDS[i++ % CHORDS.length];
@@ -202,15 +243,25 @@ const AudioEngine = (() => {
     chord(); musicTimer = setInterval(chord, 3600);
   }
   function stopSynthMusic() { if (musicTimer) { clearInterval(musicTimer); musicTimer = null; } }
+  // (re)start whatever the current mode should be playing: its track, or the synth pad until the file arrives
+  function playMode(fadeOut, fadeIn) {
+    stopTrack(fadeOut);
+    if (startTrack(mode, fadeIn)) stopSynthMusic(); else startSynthMusic();
+  }
   function startMusic() {
     if (musicOn) return;
     musicOn = true; resume();
-    if (buffers.music) startMusicBuffer(); else startSynthMusic();
+    playMode(0.05, 1);
   }
   function stopMusic() {
     musicOn = false;
-    stopSynthMusic();
-    if (musicSrc) { try { musicSrc.stop(); } catch (e) { /* already stopped */ } musicSrc = null; }
+    stopSynthMusic(); stopTrack(0.3);
+  }
+  // free spins get their own track: crossfade to it, and back to the base track afterwards
+  function musicMode(m) {
+    if (m === mode) return;
+    mode = m;
+    if (musicOn) playMode(1.2, m === 'fs' ? 0.3 : 1.5);
   }
   // dip the music under a fanfare, then bring it back
   function duck(depth, seconds) {
@@ -226,12 +277,10 @@ const AudioEngine = (() => {
     f.cancelScheduledValues(t); f.setValueAtTime(f.value, t);
     f.exponentialRampToValueAtTime(on ? 650 : 18000, t + (on ? 0.6 : 0.9));
   }
-  // slightly brighter, louder bed during free spins
-  function musicMode(mode) { musicVol.gain.setTargetAtTime(mode === 'fs' ? 0.55 : 0.42, ctx.currentTime, 0.4); }
-
   Object.keys(SOUND_FILES).forEach(n => { if (SOUND_FILES[n]) load(n, SOUND_FILES[n]); });
 
   return { play, anticipation, startMusic, stopMusic, setVolume, setSfx, setMusicVolume, resume, duck, suspense, musicMode,
     ctx, musicIn: musicVol,
-    get musicOn() { return musicOn; } };
+    get musicOn() { return musicOn; },
+    get musicTrack() { return cur ? cur.key : null; } };
 })();

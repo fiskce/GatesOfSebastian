@@ -77,7 +77,7 @@ ok('every asset the game loads exists and is precached by the service worker', (
   const refs = [...html.matchAll(/(?:src|href)="([^"#:]+)"/g)].map(m => m[1]);
   const css = [...read('css/style.css').matchAll(/url\(\.\.\/([^)]+)\)/g)].map(m => m[1]);
   const symbols = [...read('js/board.js').matchAll(/'(assets\/[^']+\.png)'/g)].map(m => m[1]);
-  const sounds = [...read('js/audio.js').matchAll(/'(sounds\/[^']+)'/g)].map(m => m[1]).filter(f => !f.endsWith('music.ogg'));
+  const sounds = [...read('js/audio.js').matchAll(/'(sounds\/[^']+)'/g)].map(m => m[1]).filter(f => !f.startsWith('sounds/music'));   // the music tracks (3.5 MB) are cached on first play instead
   const manifest = JSON.parse(read('manifest.json')).icons.map(i => i.src);
   for (const f of [...refs, ...css, ...symbols, ...sounds, ...manifest, 'manifest.json']) {
     assert.ok(fs.existsSync(path.join(root, f)), 'referenced file missing: ' + f);

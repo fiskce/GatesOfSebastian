@@ -170,19 +170,13 @@
         S.suspense = 1; G.Seb.lean(true); G.Music.heartbeat(true);
         say(mode === 'fs' ? 'RETRIGGER?' : 'ONE MORE SCATTER…', false);
       });
-      // the camera follows each held column in turn, pushing a little closer every time
-      const gentle = G.L.portrait ? 0.6 : 1;
-      antic.forEach((c, k) => G.wait((colDelay[c] - hold) * 1000).then(() => {
-        if (!live()) return;
-        FX.pushIn((0.045 + k * 0.025) * gentle, { x: G.cellX(c) + G.L.cell / 2, y: G.L.gy + G.L.gridH / 2 });
-      }));
     }
     try {
       await B.dropIn(board, { colDelay, antic });
     } finally {
       dropping = false;
       if (drone) drone.stop();
-      if (S.suspense || antic.length) { AudioEngine.suspense(false); FX.release(); S.suspense = 0; G.Seb.lean(false); G.Music.heartbeat(false); }
+      if (S.suspense || antic.length) { AudioEngine.suspense(false); S.suspense = 0; G.Seb.lean(false); G.Music.heartbeat(false); }
     }
     B.sweep();            // a diagonal glint across the freshly landed board
   }
@@ -200,7 +194,7 @@
       const n = S.scattersLanded, hit = n >= S.scatterNeed;
       AudioEngine.play('scatterLand', { rate: semis((n - 1) * 3), gain: hit ? 1.2 : 0.9 });
       G.haptic(hit ? [30, 40, 70] : 15);
-      if (n === S.scatterNeed) { G.slowmo(0.4, 700); FX.punch(0.03); }     // the scatter that completes the trigger
+      if (n === S.scatterNeed) G.slowmo(0.4, 700);     // the scatter that completes the trigger (no camera zoom)
       FX.ring(p.x, p.y, '#ffcf6a', cs * 0.2, cs * (hit ? 1.4 : 0.9), 0.55, hit ? 7 : 4);
       FX.burst(p.x, p.y, '#ffb02e', hit ? 26 : 12, hit ? 520 : 300, { size: 9, layer: 1 });
       FX.star(p.x, p.y, cs * 0.6, 0.6);

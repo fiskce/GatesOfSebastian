@@ -17,11 +17,13 @@
 </head>
 <body>
   <!-- "Only on Stake" preroll: the first thing on screen; the game loads behind it -->
-  <div id="preroll" aria-hidden="true">
-    <video id="prerollVideo" playsinline preload="auto" disablepictureinpicture disableremoteplayback>
+  <div id="preroll">
+    <canvas id="prerollBack" width="64" height="36" aria-hidden="true"></canvas>
+    <video id="prerollVideo" playsinline preload="auto" disablepictureinpicture disableremoteplayback aria-hidden="true">
       <source src="assets/video/only-on-stake.webm" type="video/webm; codecs=vp9,opus">
       <source src="assets/video/only-on-stake.mp4" type="video/mp4">
     </video>
+    <button id="prerollTap" type="button" hidden>TAP TO START</button>
   </div>
   <script src="js/preroll.js"></script>
 
@@ -105,7 +107,7 @@
       <label class="row"><span>Music</span><input type="checkbox" id="musicToggle" class="switch" /></label>
       <label class="row"><span>Sound effects</span><input type="checkbox" id="sfxToggle" class="switch" /></label>
       <label class="row"><span>Turbo spin</span><input type="checkbox" id="turboToggle" class="switch" /></label>
-      <label class="row"><span>Dynamic music <small>(drums that follow the action)</small></span><input type="checkbox" id="dynMusicToggle" class="switch" /></label>
+      <label class="row"><span>Dynamic music <small>(heartbeat and storm that follow the action)</small></span><input type="checkbox" id="dynMusicToggle" class="switch" /></label>
       <label class="row"><span>Graphics quality</span>
         <select id="qualitySelect">
           <option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>

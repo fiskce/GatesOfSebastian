@@ -39,9 +39,30 @@ body { font-family: var(--ui); color: var(--text); -webkit-tap-highlight-color: 
 .title { font-size: clamp(36px, 8.5vw, 92px); letter-spacing: .04em; }
 
 /* ---------- "Only on Stake" preroll (above everything while it plays) ---------- */
-#preroll { position: fixed; inset: 0; z-index: 60; background: #000; transition: opacity .4s ease; }
-#preroll video { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* the clip covers the screen when the text stays in view; otherwise (narrow
+   screens) a blurred live copy of it fills around it. preroll.js sizes it. */
+#preroll { position: fixed; inset: 0; z-index: 60; background: #000; overflow: hidden; transition: opacity .4s ease; }
 #preroll.done { opacity: 0; pointer-events: none; }
+#prerollVideo { position: absolute; left: 50%; top: 50%; width: 100%; height: 100%; transform: translate(-50%, -50%);
+  object-fit: cover; display: block; }
+#prerollBack { position: absolute; left: -8%; top: -8%; width: 116%; height: 116%; display: none; object-fit: cover;
+  filter: blur(24px); }
+#preroll.framed #prerollBack { display: block; }
+/* soften the seam between the clip and the blurred fill */
+#preroll.framed-v #prerollVideo { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 16%, #000 84%, transparent); }
+#preroll.framed-h #prerollVideo { -webkit-mask-image: linear-gradient(to right, transparent, #000 16%, #000 84%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 16%, #000 84%, transparent); }
+/* sound needs a tap first: the logo frame waits behind this prompt */
+#preroll.ask { cursor: pointer; }
+#prerollTap { position: absolute; left: 50%; bottom: max(12%, calc(env(safe-area-inset-bottom) + 24px)); transform: translateX(-50%);
+  padding: 14px 30px; border: 2px solid rgba(255, 255, 255, .85); border-radius: 999px; background: rgba(4, 20, 48, .45);
+  color: #fff; font: 800 clamp(14px, 2.4vw, 20px) / 1 var(--ui, sans-serif); letter-spacing: .2em; cursor: pointer;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); animation: prerollPulse 1.6s ease-in-out infinite; }
+#prerollTap[hidden] { display: none; }
+#prerollTap:focus-visible { outline: 3px solid #ffd75e; outline-offset: 4px; }
+@keyframes prerollPulse { 50% { transform: translateX(-50%) scale(1.06); box-shadow: 0 0 28px rgba(255, 255, 255, .45); } }
+@media (prefers-reduced-motion: reduce) { #prerollTap { animation: none; } }
 
 /* ---------- loader ---------- */
 #loader { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
