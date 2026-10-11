@@ -9,7 +9,12 @@
   const O = G.Overlay = { items: [] };
   const S = G.S;
 
-  const TIERS = [[15, 'BIG WIN'], [40, 'MEGA WIN'], [100, 'EPIC WIN'], [500, 'LEGENDARY'], [5000, 'MAX WIN']];
+  const TIERS = [[15, 'tierBig'], [40, 'tierMega'], [100, 'tierEpic'], [500, 'tierLegend'], [5000, 'tierMax']];
+  const tierName = i => G.T(TIERS[i][1]);
+  // overlays run on a presentation clock: turbo and slam-stop speed them up, at most 2x
+  O.rate = () => Math.min(2, Math.max(1, G.clock.pace));
+  // ...but an amount stays on screen for at least 600 ms of real time
+  const legible = ms => Math.max(ms, 600 * O.rate());
   O.tierFor = x => { let t = -1; TIERS.forEach((tt, i) => { if (x >= tt[0]) t = i; }); return t; };
   O.blocking = () => O.items.some(i => i.block);
 
@@ -93,7 +98,7 @@
       G.Seb.drawCutIn(ctx, G.clamp(a, 0, 1), slide);
       const tb = Math.max(0, 1 - (it.t - it.tierT) / 0.45);
       ctx.save(); ctx.translate(cx, cy - m * 0.13); const sc = (1 + tb * 0.35) * pulse(5); ctx.scale(sc, sc);
-      G.goldText(ctx, TIERS[it.tier][1], 0, 0, m * 0.12, { maxW: G.W * 0.9, glow: 'rgba(255,140,30,.9)' });
+      G.goldText(ctx, tierName(it.tier), 0, 0, m * 0.12, { maxW: G.W * 0.9, glow: 'rgba(255,140,30,.9)' });
       ctx.restore();
       ctx.save(); ctx.translate(cx, cy + m * 0.04);
       const s2 = it.phase === 'count' ? 1 : 1 + Math.max(0, 1 - (it.t - it.closeT) / 0.3) * 0.15;
@@ -134,7 +139,7 @@
       }
       const k = G.ease.outBack(G.clamp(it.t / 0.6, 0, 1));
       ctx.save(); ctx.translate(cx, cy); ctx.scale(k * pulse(4), k * pulse(4));
-      G.text(ctx, 'CONGRATULATIONS!', 0, -m * 0.2, m * 0.04, '#f6e3ff', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)' });
+      G.text(ctx, G.T('congrats'), 0, -m * 0.2, m * 0.04, '#f6e3ff', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)' });
       G.goldText(ctx, String(award), 0, -m * 0.06, m * 0.2, { glow: 'rgba(255,140,30,.9)' });
       G.goldText(ctx, G.T('fsAwarded'), 0, m * 0.08, m * 0.085, { maxW: G.W * 0.9 });
       ctx.restore();
@@ -182,7 +187,7 @@
 
   // ---------------- banner over the board ----------------
   O.banner = (big, sub, ms) => new Promise(res => {
-    const dur = ms / 1000;
+    const dur = legible(ms) / 1000;
     const it = { t: 0 };
     it.update = () => { if (it.t >= dur) { it.dead = true; res(); } };
     it.draw = ctx => {
@@ -216,7 +221,7 @@
 
   // ---------------- win pop over the board (wins under the big-win line) ----------------
   O.winPop = (amount, ms) => new Promise(res => {
-    const dur = ms / 1000, it = { t: 0 };
+    const dur = legible(ms) / 1000, it = { t: 0 };
     it.update = () => { if (it.t >= dur) { it.dead = true; res(); } };
     it.draw = ctx => {
       const r = G.L.reel, a = it.t > dur - 0.25 ? (dur - it.t) / 0.25 : 1;

@@ -1,4 +1,4 @@
-/* Gates of Sebastian — the board: symbol sprites, tumble physics, frame, orbs.
+/* Thunder Hunter Sebastian — the board: symbol sprites, tumble physics, frame, orbs.
  *
  * Cell positions are stored in ROW units (0 = top row, 4 = bottom) and only
  * mapped to pixels when drawn, so a resize mid-tumble never breaks anything.

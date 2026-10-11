@@ -4,14 +4,14 @@
  *
  * Scope is this folder, so it also works when the game is served from a
  * sub-path (e.g. fiskce.com/gatesofsebastianv9/). Cache Storage is shared by
- * the whole origin, so this worker only ever touches caches named 'gos9-*'.
+ * the whole origin, so this worker only ever touches this game's caches ('gos<N>-core/-media').
  *  - code (html/js/css/json): network first, cache as fallback -> online
  *    players always get the latest build
  *  - art, fonts, sounds: cache first
  * Bump VERSION on every release.
  */
-const VERSION = 'gos9-core-1';
-const MEDIA = 'gos9-media';
+const VERSION = 'gos10-core-1';
+const MEDIA = 'gos10-media';
 const CORE = [
   './',
   'manifest.json',
@@ -75,7 +75,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(k => k.startsWith('gos9-') && k !== VERSION && k !== MEDIA).map(k => caches.delete(k))))
+    .then(keys => Promise.all(keys.filter(k => /^gos\d+-(core|media)/.test(k) && k !== VERSION && k !== MEDIA).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 

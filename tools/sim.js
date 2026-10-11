@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Gates of Sebastian — RTP simulator
+/* Thunder Hunter Sebastian — RTP simulator
  *
  * Plays the exact engine the browser uses (js/engine.js) headlessly.
  *
@@ -127,7 +127,7 @@ async function main() {
   const m = await measure(o);
   const f = m.feat;
   if (o.json) { console.log(JSON.stringify({ rtpBase: m.rtpBase, rtpAnte: m.rtpAnte, rtpBuy: m.rtpBuy, F: m.F, pB: m.pB, pA: m.pA, B: mean(m.base), BA: mean(m.ante), Bbuy: mean(m.buyspin), seBase: m.seBase, seAnte: m.seAnte, seBuy: m.seBuy })); return; }
-  console.log(`Gates of Sebastian — engine simulation (${m.base.n.toLocaleString()} base spins, ${f.n.toLocaleString()} features)\n`);
+  console.log(`Thunder Hunter Sebastian — engine simulation (${m.base.n.toLocaleString()} base spins, ${f.n.toLocaleString()} features)\n`);
   console.log('Components');
   console.log(`  base-spin return   B      ${mean(m.base).toFixed(4)}x   (ante board ${mean(m.ante).toFixed(4)}x)`);
   console.log(`  base hit frequency        ${pct(m.base.hits / m.base.n)}`);

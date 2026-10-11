@@ -56,6 +56,10 @@ window.GOS_STR = (() => {
     fsAwarded: 'FREE SPINS', fsMore: '+{n} FREE SPINS', fsRetrigger: 'RETRIGGER!',
     fsComplete: 'FEATURE COMPLETE', youWon: 'YOU WON', inSpins: 'IN {n} FREE SPINS',
     tapContinue: 'TAP TO CONTINUE', tapSkip: 'TAP TO SKIP', tapStart: 'TAP TO START',
+    tierBig: 'BIG WIN', tierMega: 'MEGA WIN', tierEpic: 'EPIC WIN', tierLegend: 'LEGENDARY', tierMax: 'MAX WIN',
+    congrats: 'CONGRATULATIONS!',
+    tumbleCount: 'TUMBLE × {n}',
+    msMulti: '×{x} TOTAL MULTI', msRaging: 'THE STORM IS RAGING', msGrows: 'THE STORM GROWS',
     // DOM
     playBtn: 'PLAY',
     fineDemo: ['Demo credits only · Not real-money gambling · Sound on', 'Demo coins only · For fun · Sound on'],

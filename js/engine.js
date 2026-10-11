@@ -1,4 +1,4 @@
-/* Gates of Sebastian — pure game engine (no DOM)
+/* Thunder Hunter Sebastian — pure game engine (no DOM)
  *
  * Runs identically in the browser (window.Engine) and in Node (module.exports),
  * so the exact math the browser plays can be simulated over millions of spins
@@ -6,7 +6,7 @@
  * the simulator only reads the totals. Both call evaluate(), so the payout the
  * player sees is, by construction, the payout the simulator measured.
  *
- * Model (Gates-of-Olympus style):
+ * Model:
  *  - 6x5 grid, "pay anywhere": 8+ identical symbols anywhere on the grid win
  *  - Tumble: winners removed, survivors fall, new symbols drop, repeat
  *  - Multiplier orbs (2..500x) can land on any winning tumble step.

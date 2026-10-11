@@ -101,12 +101,15 @@
   armStall();
 
   // respect a player who turned the sound off last time (the sting plays outside the game's mixer)
+  // the sting is mastered far louder than the game's mix: bring it down to sit with it
+  const PREROLL_GAIN = 0.4;
+  video.volume = 0.7 * PREROLL_GAIN;
   let soundOff = false;
   try {
     const d = JSON.parse(localStorage.getItem('gos9') || localStorage.getItem('gos8') || localStorage.getItem('gos7') || 'null'), st = d && d.settings;
     if (st) {
       soundOff = (st.sfx === false && st.music === false) || st.volume === 0;
-      if (typeof st.volume === 'number') video.volume = Math.max(0, Math.min(1, st.volume));
+      if (typeof st.volume === 'number') video.volume = Math.max(0, Math.min(1, st.volume)) * PREROLL_GAIN;
     }
   } catch (e) { /* storage unavailable */ }
 

@@ -1,4 +1,4 @@
-/* Gates of Sebastian — audio engine
+/* Thunder Hunter Sebastian — audio engine
  *
  * Every sound is either a file from SOUND_FILES or a Web Audio synth fallback,
  * so the game has full sound even with no audio files at all. All sounds take
@@ -14,7 +14,8 @@
 const AudioEngine = (() => {
   'use strict';
   const AC = window.AudioContext || window.webkitAudioContext;
-  const ctx = AC ? new AC() : null;
+  let ctx = null;
+  if (AC) { try { ctx = new AC({ latencyHint: 'interactive' }); } catch (e) { ctx = new AC(); } }
 
   /* ===================================================================
    * SOUND FILES — set a path (ideally .ogg) to use your own audio for a
@@ -52,7 +53,12 @@ const AudioEngine = (() => {
 
   function resume() { if (ctx.state === 'suspended') ctx.resume(); }
   function setVolume(v) { master.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), ctx.currentTime, 0.02); }
-  function setSfx(on) { sfxOn = on; sfx.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, 0.02); }
+  function setSfx(on) {
+    sfxOn = on;
+    const g = sfx.gain, t = ctx.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+    g.setTargetAtTime(on ? 1 : 0, on ? t : t + 0.08, 0.02);
+  }
   function setMusicVolume(v) { musicVol.gain.setTargetAtTime(v, ctx.currentTime, 0.05); }
 
   async function load(name, url) {
@@ -147,16 +153,19 @@ const AudioEngine = (() => {
       tone(65, t, 1.4, 'sine', 0.25 * g);
     },
     tierUp(p, g) { const t = ctx.currentTime; [0, 7, 12, 19].forEach((s, i) => bell(392 * p * semi(s), t + i * 0.04, 0.8, 0.14 * g)); tone(80, t, 0.6, 'sine', 0.25 * g, 50); },
+    confirm(p, g) { const t = ctx.currentTime; bell(587.33 * p, t, 0.12, 0.07 * g); bell(880 * p, t + 0.012, 0.12, 0.05 * g); },
     achievement(p, g) { const t = ctx.currentTime; [0, 4, 7, 12, 16].forEach((s, i) => bell(659.25 * p * semi(s), t + i * 0.07, 0.5, 0.11 * g)); },
     denied(p, g) { const t = ctx.currentTime; tone(220, t, 0.12, 'square', 0.06 * g); tone(165, t + 0.1, 0.18, 'square', 0.06 * g); },
   };
 
+  const warned = {};
   function play(name, opts) {
     if (!sfxOn) return;
     resume();
     const rate = (opts && opts.rate) || 1, gain = opts && opts.gain != null ? opts.gain : 1;
     if (buffers[name]) { playBuffer(buffers[name], gain, rate); return; }
-    (synths[name] || synths.click)(rate, gain);
+    if (synths[name]) { synths[name](rate, gain); return; }
+    if (!warned[name]) { warned[name] = true; console.warn('AudioEngine: no sound named "' + name + '"'); }
   }
 
   // rising suspense drone while the last reels spin with 3 scatters showing
@@ -223,7 +232,9 @@ const AudioEngine = (() => {
   function stopTrack(fade) {
     if (!cur) return;
     const c = cur; cur = null;
-    resumeAt[c.key] = c.key === 'base' ? position(c) : 0;
+    // both tracks remember where they were (a hidden tab or mute resumes in place);
+    // a new feature starts the free-spins track from its intro (musicMode)
+    resumeAt[c.key] = position(c);
     const t = ctx.currentTime, gn = c.g.gain;
     gn.cancelScheduledValues(t); gn.setValueAtTime(gn.value, t); gn.linearRampToValueAtTime(0, t + fade);
     try { c.src.stop(t + fade + 0.05); } catch (e) { /* already stopped */ }
@@ -261,6 +272,7 @@ const AudioEngine = (() => {
   function musicMode(m) {
     if (m === mode) return;
     mode = m;
+    if (m === 'fs') resumeAt.fs = 0;
     if (musicOn) playMode(1.2, m === 'fs' ? 0.3 : 1.5);
   }
   // dip the music under a fanfare, then bring it back

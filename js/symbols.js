@@ -1,4 +1,4 @@
-/* Gates of Sebastian — symbol artwork
+/* Thunder Hunter Sebastian — symbol artwork
  * Every symbol is hand-built inline SVG so it renders crisp at any size and
  * looks like a real faceted gemstone / gold object (no emoji, no image files).
  * Exposes window.SYMBOL_SVG[id] = "<svg>…</svg>".

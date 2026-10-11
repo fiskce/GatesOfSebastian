@@ -1,4 +1,4 @@
-/* Gates of Sebastian — adaptive music layers.
+/* Thunder Hunter Sebastian — adaptive music layers.
  *
  * A small Web Audio layer that plays *under* the soundtrack and follows the
  * game: an accelerating heartbeat during a scatter tease and a low rumble that

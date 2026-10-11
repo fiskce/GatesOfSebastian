@@ -1,4 +1,4 @@
-/* Gates of Sebastian — Provably Fair RNG (security)
+/* Thunder Hunter Sebastian — Provably Fair RNG (security)
  * Standard commit-reveal scheme (as used by major crypto casinos):
  *   • A 256-bit server seed is generated with a CSPRNG (crypto.getRandomValues).
  *   • Its SHA-256 hash is published BEFORE you play (the commitment shown on

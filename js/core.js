@@ -55,6 +55,16 @@ window.GOS = (() => {
   });
   G.skip = () => { const w = skipWaiters; skipWaiters = []; w.forEach(f => f()); return w.length > 0; };
 
+  // ---------------- springs ----------------
+  // A damped spring stepped with real time, so a press feels the same at 60 and 120 Hz.
+  // [angular frequency, damping ratio]; RELEASE overshoots by about 3%.
+  G.SPRING = { HOVER: [18, 1], PRESS: [42, 0.9], RELEASE: [20, 0.75], KNOB: [26, 0.8], READOUT: [14, 1] };
+  G.spring = (s, target, dt, preset) => {
+    const w = preset[0], z = preset[1], h = Math.min(dt, 0.05) / 2;
+    for (let k = 0; k < 2; k++) { s.v += (w * w * (target - s.x) - 2 * z * w * s.v) * h; s.x += s.v * h; }
+    return s.x;
+  };
+
   // ---------------- math / easing ----------------
   G.clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   G.lerp = (a, b, t) => a + (b - a) * t;

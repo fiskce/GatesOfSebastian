@@ -15,9 +15,11 @@
     const m = G.ctx.getTransform();
     const plain = m.a === G.DPR && m.d === G.DPR && !m.b && !m.c && !m.e && !m.f;
     G.L.buttons.push({ id, x, y, w, h, onClick, shape: opts.shape, disabled: !!opts.disabled, label: opts.label || id, inv: plain ? null : m.inverse() });
-    const a = anim[id] || (anim[id] = { h: 0, p: 0 });
+    const a = anim[id] || (anim[id] = { h: 0, p: 0, hs: { x: 0, v: 0 }, ps: { x: 0, v: 0 }, t: G.clock.real });
     const hov = G.hoverId === id && !opts.disabled, pr = G.pressId === id && !opts.disabled;
-    a.h += ((hov ? 1 : 0) - a.h) * 0.25; a.p += ((pr ? 1 : 0) - a.p) * 0.45;
+    const dt = G.clamp(G.clock.real - a.t, 0, 0.05); a.t = G.clock.real;
+    a.h = G.clamp(G.spring(a.hs, hov ? 1 : 0, dt, G.SPRING.HOVER), 0, 1);
+    a.p = G.spring(a.ps, pr ? 1 : 0, dt, pr ? G.SPRING.PRESS : G.SPRING.RELEASE);   // springs back past rest a little
     return a;
   };
 
@@ -362,7 +364,7 @@
       G.allow('fullscreen') && ['full', 'full', () => G.UI.fullscreen(), 'Fullscreen'],
     ].filter(Boolean);
     icons.forEach(([id, name, fn, label]) => { iconButton(ctx, id, name, x, cy - bb.h * 0.08, isz, fn, { label }); x += ig; });
-    G.text(ctx, 'FISKCE.COM', pad, bb.y + bb.h - 9, Math.min(11, bb.h * 0.13), 'rgba(233,196,106,.6)', { weight: 700, align: 'left' });
+    if (G.mode === 'demo') G.text(ctx, 'FISKCE.COM', pad, bb.y + bb.h - 9, Math.min(11, bb.h * 0.13), 'rgba(233,196,106,.6)', { weight: 700, align: 'left' });
     // right cluster: turbo, -, SPIN, +, auto
     const R = G.clamp(bb.h * 0.62, 34, 62), r = R * 0.48;
     let rx = W - pad;
@@ -457,7 +459,10 @@
   function drawAutoMenu(ctx) {
     if (!S.autoMenu || S.auto > 0) return;
     const opts = [10, 25, 50, 100, Infinity];
-    const bw = G.clamp(G.W * 0.07, 64, 92), bh = G.clamp(G.H * 0.05, 34, 46), gap = 6;
+    const bw = G.clamp(G.W * 0.07, 64, 92), gap = 6;
+    // fit above the button even in short windows (400x225)
+    const room = H.autoAnchor.y - 20;
+    const bh = Math.max(16, Math.min(G.clamp(G.H * 0.05, 34, 46), (room - gap * opts.length) / (opts.length + 0.9)));
     const h = opts.length * (bh + gap) + bh * 0.9;
     const x = G.clamp(H.autoAnchor.x - bw / 2, 8, G.W - bw - 8), y = H.autoAnchor.y - h - 14;
     G.roundRect(ctx, x - 8, y - 8, bw + 16, h + 16, 12);

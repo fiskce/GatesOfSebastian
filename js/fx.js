@@ -1,4 +1,4 @@
-/* Gates of Sebastian — effects: particles, lightning, floating text, camera.
+/* Thunder Hunter Sebastian — effects: particles, lightning, floating text, camera.
  * Particles are drawn from small pre-rendered sprites (no per-particle
  * gradients) and advance with the real frame delta, so they look the same at
  * 30, 60 or 144 Hz.

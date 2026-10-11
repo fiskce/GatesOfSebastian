@@ -164,7 +164,7 @@
     if (S.inFS) say(T('msgFreeSpin', { a: S.fsPlayed, b: S.fsAward }), false);
     else S.message = '';
 
-    await dropBoard(out.board, mode);
+    await dropBoard(out.board, mode, !!opts.buy);
 
     for (const step of out.res.steps) await playStep(step, bet);
 
@@ -218,8 +218,7 @@
       AudioEngine.play('freespins', { gain: 0.8 });
       await O.banner(T('fsMore', { n: FS_RETRIGGER }), T('fsRetrigger'), 1600);
     } else if (!S.inFS && out.res.scatters === SCATTERS_FS - 1) {
-      say(T('msgNear'));
-      G.Seb.headShake(); G.Seb.say('near', 0.8);
+      // a near miss is counted for stats only: no message, no reaction
     }
     if (!S.inFS) S.winDisplay = spinWin;
     else S.winDisplay = S.fsTotal;
@@ -228,13 +227,15 @@
 
   // ---- the board drops in column by column; with enough scatters showing,
   //      the remaining columns are held back and "spin" for suspense
-  async function dropBoard(board, mode) {
+  async function dropBoard(board, mode, buy) {
     const need = mode === 'fs' ? SCATTERS_RETRIG : SCATTERS_FS;
     const turbo = G.settings.turbo;
     const colDelay = [], antic = [];
     let count = 0, t = 0.16;
     for (let c = 0; c < COLS; c++) {
-      if (count >= need - 1) { t += turbo ? 0.65 : 1.05; antic.push(c); }
+      // hold a column only while exactly one scatter is missing: once the trigger is
+      // decided (or bought) there is nothing left to tease
+      if (!buy && count === need - 1) { t += turbo ? 0.65 : 1.05; antic.push(c); }
       else t += c === 0 ? 0 : turbo ? 0.04 : 0.075;
       colDelay[c] = t;
       for (let r = 0; r < ROWS; r++) if (board[r * COLS + c] === SCATTER) count++;
@@ -249,7 +250,7 @@
       // start the tease when the first held column would have dropped
       G.wait((colDelay[antic[0]] - hold) * 1000).then(() => {
         if (!live()) return;
-        drone = AudioEngine.anticipation(); AudioEngine.suspense(true);
+        drone = liveDrone = AudioEngine.anticipation(); AudioEngine.suspense(true);
         S.suspense = 1; G.Seb.lean(true); G.Music.heartbeat(true);
         say(mode === 'fs' ? T('msgRetrigger') : T('msgOneMore'), false);
       });
@@ -259,11 +260,12 @@
     } finally {
       dropping = false;
       if (drone) drone.stop();
+      if (liveDrone) { liveDrone.stop(); liveDrone = null; }
       if (S.suspense || antic.length) { AudioEngine.suspense(false); S.suspense = 0; G.Seb.lean(false); G.Music.heartbeat(false); }
     }
     B.sweep();            // a diagonal glint across the freshly landed board
   }
-  let dropSeq = 0, dropping = false;
+  let dropSeq = 0, dropping = false, liveDrone = null;
 
   B.onLand = (i, c) => {
     const col = i % COLS, row = Math.floor(i / COLS);
@@ -351,7 +353,7 @@
     const stepWin = step.stepWinX * bet;
     S.tumbleWin += stepWin;
     AudioEngine.play(step.stepWinX >= 15 ? 'bigwin' : 'win', { rate: semis(Math.min(S.cascade - 1, 9) * 2) });
-    if (S.cascade > 1) say('TUMBLE × ' + S.cascade, false);
+    if (S.cascade > 1) say(T('tumbleCount', { n: S.cascade }), false);
     await G.wait(560);
     for (const o of step.orbs) await throwOrb(o);
     // shatter the winners
@@ -408,7 +410,7 @@
     MILESTONES.forEach(m => { if (S.persistent >= m && m > S.fsMilestone) hit = m; });
     if (!hit) return;
     S.fsMilestone = hit;
-    O.milestone('×' + hit + ' TOTAL MULTI', hit >= 100 ? 'THE STORM IS RAGING' : 'THE STORM GROWS');
+    O.milestone(T('msMulti', { x: hit }), hit >= 100 ? T('msRaging') : T('msGrows'));
     AudioEngine.play('thunder', { gain: 1 }); AudioEngine.play('tierUp', { rate: 0.9 + MILESTONES.indexOf(hit) * 0.08 });
     Scene.lightning(true); setTimeout(() => Scene.lightning(true), 160);
     FX.flash(0.5, '255,200,150'); FX.shake(12); FX.punch(0.035);
@@ -425,9 +427,10 @@
       const r = G.L.reel;
       FX.coins(r.x + r.w / 2, r.y + r.h * 0.65, Math.min(30, 4 + Math.round(x * 2)), r.w * 0.2, G.H * 0.7);
       AudioEngine.play('coin', { rate: 1.1 });
-      O.winPop(amount, 1100);
+      const pop = O.winPop(amount, 1100);
       S.winDisplay = S.inFS ? S.fsTotal : amount;
       await G.wait(x >= 5 ? 900 : 550);
+      if (S.auto > 0 && !S.inFS) await pop;
     }
   }
 
@@ -491,13 +494,11 @@
   Game.toggleAnte = () => {
     if (S.busy || S.inFS || !G.allow('ante')) return;
     S.ante = !S.ante; G.save();
-    AudioEngine.play(S.ante ? 'coin' : 'click');
     say(S.ante ? T('msgAnteOn') : T('msgAnteOff'));
   };
   Game.bet = d => {
     if (S.busy || S.inFS || S.auto > 0 || !G.allow('bet')) return;
     S.betIndex = G.clamp(S.betIndex + d, 0, G.BET_STEPS.length - 1); G.save();
-    AudioEngine.play('click', { rate: 0.8 + Math.min(S.betIndex, 20) * 0.04 });
     say(T('msgBet', { v: G.money(G.baseBet()) }));
   };
   Game.toggleTurbo = () => {
@@ -507,6 +508,7 @@
   Game.toggleSound = () => {
     const on = !(G.settings.sfx || G.settings.music);
     G.settings.sfx = on; G.settings.music = on; Game.applySettings(); G.save(); G.UI.sync();
+    if (on) setTimeout(() => AudioEngine.play('confirm'), 30);
   };
   Game.autoPressed = () => {
     if (S.inFS || !G.allow('auto')) return;
@@ -593,17 +595,28 @@
   function localXY(e) { const r = G.canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
   // buttons drawn inside the zoomed/tilted world record their transform, so the
   // pointer is mapped back into each button's own space before testing
+  // Small controls get a padded hit area (44 px on touch, 36 in the compact layout,
+  // 28 with a mouse) without being drawn bigger; where pads overlap, the nearest wins.
+  const coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
   function hit(x, y) {
     const bs = G.L.buttons || [];
+    const min = coarse ? (G.L.compact ? 36 : 44) : 28;
+    let best = null, bestD = Infinity;
     for (let k = bs.length - 1; k >= 0; k--) {
       const b = bs[k];
       let px = x, py = y;
       if (b.inv) { const q = b.inv.transformPoint(new DOMPoint(x * G.DPR, y * G.DPR)); px = q.x; py = q.y; }
-      const inside = b.shape === 'circle' ? Math.hypot(px - (b.x + b.w / 2), py - (b.y + b.h / 2)) <= b.w / 2
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      const inside = b.shape === 'circle' ? Math.hypot(px - cx, py - cy) <= b.w / 2
         : px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
       if (inside) return b;
+      const padX = Math.max(0, (min - b.w) / 2), padY = Math.max(0, (min - b.h) / 2);
+      if ((padX || padY) && px >= b.x - padX && px <= b.x + b.w + padX && py >= b.y - padY && py <= b.y + b.h + padY) {
+        const d = Math.hypot(px - cx, py - cy);
+        if (d < bestD) { bestD = d; best = b; }
+      }
     }
-    return null;
+    return best;
   }
   G.pointer = null;
   G.canvas.addEventListener('pointerdown', e => {
@@ -671,9 +684,9 @@
         e.preventDefault();
         if (e.code === 'Space' && !G.allow('space') && !S.busy) break;
         if (!e.repeat) Game.spinPressed(); break;
-      case 'ArrowUp': e.preventDefault(); Game.bet(1); break;
-      case 'ArrowDown': e.preventDefault(); Game.bet(-1); break;
-      case 'KeyT': Game.toggleTurbo(); break;
+      case 'ArrowUp': e.preventDefault(); if (G.allow('bet') && !S.busy && !S.inFS && S.auto <= 0) AudioEngine.play('click'); Game.bet(1); break;
+      case 'ArrowDown': e.preventDefault(); if (G.allow('bet') && !S.busy && !S.inFS && S.auto <= 0) AudioEngine.play('click'); Game.bet(-1); break;
+      case 'KeyT': if (G.allow('turbo')) AudioEngine.play('click'); Game.toggleTurbo(); break;
       case 'KeyM': Game.toggleSound(); break;
       case 'KeyI': G.UI.open('info'); break;
       case 'Escape': S.autoMenu = false; break;
@@ -684,6 +697,8 @@
   document.addEventListener('visibilitychange', () => {
     if (!S.started) return;
     G.clock.paused = document.hidden;
+    if (document.hidden && liveDrone) { liveDrone.stop(); liveDrone = null; }
+    else if (!document.hidden && dropping && S.suspense && !liveDrone) liveDrone = AudioEngine.anticipation();
     if (G.settings.music) { if (document.hidden) AudioEngine.stopMusic(); else AudioEngine.startMusic(); }
     if (document.hidden) G.Music.stop(); else if (G.settings.music && G.settings.dynMusic) G.Music.start();
   });
@@ -708,7 +723,7 @@
     G.clock.game += dtGame;
     G.tickTimers();
     B.update(dtGame); B.updateOrbs(dtGame); updateTweens(dtGame);
-    O.update(paused ? 0 : dtReal);
+    O.update(paused ? 0 : dtReal * O.rate());
     const dtFx = paused ? 0 : dtReal * G.clock.slow;          // effects slow down with slow-motion, not with turbo
     FX.update(dtFx); FX.updateBolts(dtFx); FX.updateCam(dtReal); G.Seb.update(dtFx); G.Stats.update(dtReal);
     S.mood = S.mood < S.moodTarget ? Math.min(S.moodTarget, S.mood + dtReal * 0.6) : Math.max(S.moodTarget, S.mood - dtReal * 0.6);
