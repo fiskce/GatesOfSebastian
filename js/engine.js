@@ -207,31 +207,45 @@
     return { board, res, ev, pScatter };
   }
 
-  /* A complete free-spins feature from 0 persistent multiplier (pure totals). */
-  function playFeature(rng, capX) {
+  /* A complete free-spins feature from 0 persistent multiplier (pure totals).
+   * `rec`, when given, receives every spin as it is played (see playRoundDetailed). */
+  function playFeature(rng, capX, rec) {
     let spins = FS_AWARD, persistent = 0, totalX = 0, played = 0, retriggers = 0;
     const cap = capX == null ? MAX_WIN_X : capX;
     while (spins > 0) {
       spins--; played++;
+      const persistentBefore = persistent;
       const s = playSpin(rng, 'fs', { persistent });
       persistent = s.ev.persistentAfter;
       totalX += s.ev.winX;
-      if (s.res.scatters >= SCATTERS_RETRIG) { spins += FS_RETRIGGER; retriggers++; }
-      if (totalX >= cap) { totalX = cap; break; }
+      const retrigger = s.res.scatters >= SCATTERS_RETRIG;
+      if (retrigger) { spins += FS_RETRIGGER; retriggers++; }
+      const capped = totalX >= cap;
+      if (rec) rec.push({ mode: 'fs', buy: false, out: s, persistentBefore, retrigger, capped });
+      if (capped) { totalX = cap; break; }
     }
     return { totalX, played, retriggers, persistent };
   }
 
   /* A complete round (one paid spin + any feature it triggers), in x bet units,
    * capped at MAX_WIN_X. opts: {rng, ante, buy} */
-  function playRound(opts) {
+  function playRound(opts) { return round(opts, null).totalX; }
+
+  /* The same round, keeping every spin it played (the Stake math export turns
+   * these into books). It draws exactly the same random numbers as playRound. */
+  function playRoundDetailed(opts) { const spins = []; const r = round(opts, spins); r.spins = spins; return r; }
+
+  function round(opts, rec) {
     const rng = opts.rng || Math.random;
     const buy = !!(opts.buy || opts.forceBonus);
-    const s = playSpin(rng, opts.ante && !buy ? 'ante' : 'base', { buy });
+    const mode = opts.ante && !buy ? 'ante' : 'base';
+    const s = playSpin(rng, mode, { buy });
     let totalX = Math.min(s.ev.winX, MAX_WIN_X);
+    if (rec) rec.push({ mode, buy, out: s, persistentBefore: 0, retrigger: false, capped: s.ev.winX >= MAX_WIN_X });
     const triggered = buy || s.res.scatters >= SCATTERS_FS;
-    if (triggered && totalX < MAX_WIN_X) totalX += playFeature(rng, MAX_WIN_X - totalX).totalX;
-    return Math.min(totalX, MAX_WIN_X);
+    let feature = null;
+    if (triggered && totalX < MAX_WIN_X) { feature = playFeature(rng, MAX_WIN_X - totalX, rec); totalX += feature.totalX; }
+    return { totalX: Math.min(totalX, MAX_WIN_X), triggered, feature };
   }
 
   // force at least n scatters onto a board (bonus buy)
@@ -248,11 +262,112 @@
     return g;
   }
 
+
+  // ---- spins as data: the events a Stake math book stores, and back ----
+  // one letter per symbol, cells row by row (index r * COLS + c)
+  const SYM_CODE = { crown: 'A', ring: 'B', glass: 'C', chalice: 'D', red: 'E', purple: 'F', green: 'G', blue: 'H', gold: 'I', scatter: 'S' };
+  const CODE_SYM = {};
+  for (const k in SYM_CODE) CODE_SYM[SYM_CODE[k]] = k;
+  const ORB_VALUES = ORB_TABLE.map(o => o[0]);
+  function encodeBoard(g) { return g.map(s => SYM_CODE[s]).join(''); }
+  function decodeBoard(str) {
+    if (typeof str !== 'string' || str.length !== CELLS) throw new Error('bad board');
+    const g = new Array(CELLS);
+    for (let i = 0; i < CELLS; i++) { g[i] = CODE_SYM[str[i]]; if (!g[i]) throw new Error('bad symbol ' + str[i]); }
+    return g;
+  }
+
+  /* A played spin as a book event. winX100 is this spin's share of the round
+   * payout in hundredths of the bet, already capped. */
+  function serializeSpin(out, mode, winX100, flags) {
+    const e = { type: 'spin', mode, board: encodeBoard(out.board), steps: [], win: winX100 };
+    for (const st of out.res.steps) {
+      const step = { board: encodeBoard(st.boardAfter) };
+      if (st.orbs.length) step.orbs = st.orbs.map(o => [o.cell, o.value]);
+      e.steps.push(step);
+    }
+    if (flags && flags.buy) e.buy = true;
+    if (flags && flags.capped) e.capped = true;
+    return e;
+  }
+
+  // survivors of a tumble keep their order at the bottom of each column
+  function checkTumble(before, removeSet, after) {
+    for (let c = 0; c < COLS; c++) {
+      let k = ROWS - 1;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        const i = idx(r, c);
+        if (removeSet.has(i)) continue;
+        if (after[idx(k, c)] !== before[i]) throw new Error('bad tumble in column ' + c);
+        k--;
+      }
+    }
+  }
+
+  /* Rebuild the exact playSpin() result from a book event, so a round from the
+   * RGS animates through the same code as a locally played one. Wins and the
+   * multiplier are recomputed by findWins/evaluate and checked against the
+   * event; anything inconsistent throws. */
+  function expandSpin(e, persistentBefore) {
+    if (!e || e.type !== 'spin' || !Array.isArray(e.steps)) throw new Error('not a spin event');
+    const inFreeSpins = e.mode === 'fs';
+    const board = decodeBoard(e.board);
+    let g = board.slice();
+    const steps = [];
+    let tumbleWinX = 0;
+    const orbValues = [];
+    for (const st of e.steps) {
+      const wins = findWins(g);
+      if (!wins.length) throw new Error('tumble step without a win');
+      const removeSet = new Set();
+      let stepWinX = 0;
+      for (const w of wins) { stepWinX += w.payX; for (const c of w.cells) removeSet.add(c); }
+      tumbleWinX += stepWinX;
+      const orbs = (st.orbs || []).map(o => ({ cell: o[0], value: o[1] }));
+      for (const o of orbs) {
+        if (!(o.cell >= 0 && o.cell < CELLS) || removeSet.has(o.cell) || g[o.cell] === SCATTER || ORB_VALUES.indexOf(o.value) < 0) throw new Error('bad orb');
+        orbValues.push(o.value);
+      }
+      const after = decodeBoard(st.board);
+      checkTumble(g, removeSet, after);
+      steps.push({ board: g, wins, removeSet: [...removeSet], orbs, stepWinX, boardAfter: after });
+      g = after;
+    }
+    if (findWins(g).length) throw new Error('the final board still has a win');
+    const res = { steps, tumbleWinX, orbValues, finalBoard: g, scatters: countScatters(g) };
+    const ev = evaluate(res, inFreeSpins, persistentBefore || 0);
+    const w = Math.round(ev.winX * 100);
+    if (e.capped ? !(e.win <= w) : e.win !== w) throw new Error('win does not match the board');
+    return { board, res, ev, pScatter: pScatterFor(e.mode) };
+  }
+
+  /* A detailed round as book events plus its payout in hundredths of the bet.
+   * Each spin carries its share of the payout; the shares add up exactly. */
+  function roundEvents(r) {
+    const events = [];
+    const push = e => { e.index = events.length; events.push(e); return e; };
+    let sumX100 = 0, baseX100 = 0, fsX100 = 0, inFs = false;
+    for (const sp of r.spins) {
+      if (sp.mode === 'fs' && !inFs) { inFs = true; push({ type: 'freeSpinsTrigger', spins: FS_AWARD }); }
+      let w = Math.round(sp.out.ev.winX * 100);
+      if (sp.capped || sumX100 + w > MAX_WIN_X * 100) w = MAX_WIN_X * 100 - sumX100;
+      sumX100 += w;
+      if (sp.mode === 'fs') fsX100 += w; else baseX100 += w;
+      push(serializeSpin(sp.out, sp.mode, w, { buy: sp.buy, capped: sp.capped }));
+      if (sp.retrigger && !sp.capped) push({ type: 'freeSpinsRetrigger', spins: FS_RETRIGGER });
+    }
+    if (inFs) push({ type: 'freeSpinsEnd', win: fsX100 });
+    push({ type: 'finalWin', win: sumX100 });
+    if (sumX100 !== Math.round(r.totalX * 100)) throw new Error('round payout mismatch: ' + sumX100 + ' vs ' + r.totalX);
+    return { events, payoutX100: sumX100, baseX100, fsX100 };
+  }
+
   return {
     COLS, ROWS, CELLS, MIN_CLUSTER, SCATTER, MAX_WIN_X, BUY_COST_X, ANTE_COST,
     SYMBOLS, PAY_ORDER, FS_AWARD, FS_RETRIGGER, SCATTERS_FS, SCATTERS_RETRIG,
     ORB_TABLE, CONFIG, configure, pScatterFor,
     makeRng, newBoard, findWins, countScatters, tumble, spawnOrbs,
-    resolveSpin, evaluate, playSpin, playFeature, playRound, plantScatters, idx,
+    resolveSpin, evaluate, playSpin, playFeature, playRound, playRoundDetailed, plantScatters, idx,
+    SYM_CODE, encodeBoard, decodeBoard, serializeSpin, expandSpin, roundEvents,
   };
 });

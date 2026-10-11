@@ -4,13 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0b0520" />
-<meta name="description" content="Gates of Sebastian — a Gates of Olympus–style tumbling slot drawn on one HTML5 canvas, with a simulation-tuned engine and provably fair spins." />
-<title>Gates of Sebastian</title>
+<meta name="description" content="Thunder Hunter Sebastian — a tumbling, pay-anywhere slot drawn on one HTML5 canvas, with stacking thunder multipliers and free spins." />
+<title>Thunder Hunter Sebastian</title>
 <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="icon" type="image/png" sizes="32x32" href="https://source.bg.or.at/www/branding/beriffagroup/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="https://source.bg.or.at/www/branding/beriffagroup/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
 <link rel="preload" href="assets/fonts/cinzel-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/outfit-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css" />
@@ -27,14 +27,14 @@
   </div>
   <script src="js/preroll.js"></script>
 
-  <canvas id="game" tabindex="0" aria-label="Gates of Sebastian slot game. Space to spin, arrow keys change the bet, T toggles turbo, I opens the rules."></canvas>
+  <canvas id="game" tabindex="0" data-ta="canvasLabel" aria-label="Thunder Hunter Sebastian slot game. Space to spin, arrow keys change the bet, T toggles turbo, I opens the rules."></canvas>
   <div id="live" class="sr-only" aria-live="polite"></div>
 
   <!-- loading -->
   <div id="loader">
     <div class="brand">
       <span class="presents">Fiskce presents</span>
-      <span class="title-sm">GATES OF</span>
+      <span class="title-sm">THUNDER HUNTER</span>
       <span class="title">SEBASTIAN</span>
     </div>
     <div class="meter"><span id="loadBar"></span></div>
@@ -44,14 +44,14 @@
   <!-- splash -->
   <div id="splash">
     <div class="splash-inner">
-      <img class="splash-seb" src="assets/sebastian.png" alt="" />
+      <img class="splash-seb" src="assets/sebastian/splash.webp" alt="" />
       <div class="splash-copy">
         <span class="presents">Fiskce presents</span>
-        <h1><span class="title-sm">GATES OF</span><span class="title">SEBASTIAN</span></h1>
+        <h1><span class="title-sm">THUNDER HUNTER</span><span class="title">SEBASTIAN</span></h1>
         <div class="features">
           <div class="feature">
             <svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="#ffd36b" stroke-width="3" stroke-linejoin="round"><path d="M24 4l8 8-8 8-8-8z"/><path d="M14 22l6 6-6 6-6-6z"/><path d="M34 22l6 6-6 6-6-6z"/><path d="M24 34l5 5-5 5-5-5z"/></g></svg>
-            <b>Tumble</b><span>8+ anywhere pays. Winners shatter, new gems fall, wins chain.</span>
+            <b>Tumble</b><span>8+ of a kind anywhere wins. Winners shatter, new gems fall, wins chain.</span>
           </div>
           <div class="feature">
             <svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="og" cx="38%" cy="32%"><stop offset="0" stop-color="#fff4c4"/><stop offset=".5" stop-color="#ff7a2e"/><stop offset="1" stop-color="#a3110a"/></radialGradient></defs><circle cx="24" cy="24" r="17" fill="url(#og)" stroke="#fff" stroke-width="2"/><text x="24" y="29" text-anchor="middle" font-size="13" font-weight="900" fill="#fff" font-family="Cinzel,serif">500x</text></svg>
@@ -62,41 +62,15 @@
             <b>15 Free Spins</b><span>4+ scatters. Every multiplier is saved and stacks for the whole feature.</span>
           </div>
         </div>
-        <button id="playBtn" class="play-btn">PLAY</button>
-        <p class="fine">Demo credits only · Not real-money gambling · Sound on</p>
+        <button id="playBtn" class="play-btn" data-t="playBtn">PLAY</button>
+        <p class="fine" id="fineText"></p>
       </div>
     </div>
   </div>
 
-  <!-- Info -->
+  <!-- Info: the rules are built by ui.js (they follow the mode, the wording and the published math) -->
   <div id="m-info" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-info">
-    <div class="card" tabindex="-1">
-      <h2 id="t-info">How to play</h2>
-      <p><b>Pay anywhere.</b> No paylines: land <b>8 or more</b> of the same symbol anywhere on the 6×5 grid to win.</p>
-      <p><b>Tumble.</b> Winning symbols shatter, the rest fall and new ones drop in. Tumbling repeats while new wins form, so one spin can chain many wins.</p>
-      <p><b>Multiplier orbs.</b> On any winning tumble, Sebastian can fire an orb worth one of these:</p>
-      <div id="orbList" class="orb-list"></div>
-      <p>Orbs fly into the <b>multiplier</b> collector. When the tumbling stops, its total multiplies the spin's win.</p>
-      <p class="with-icon"><canvas id="scatterIcon" width="64" height="64" aria-hidden="true"></canvas>
-        <span><b>Free spins.</b> <b>4+ scatters</b> award <b>15 free spins</b>. In the feature, every orb is <b>saved</b> into a total multiplier that applies to every winning spin until the feature ends. <b>3+ scatters</b> in the feature add <b>+5 spins</b>.</span></p>
-      <p><b>Double chance (ante).</b> +25% stake for about <b>1.7×</b> the chance to trigger free spins naturally. <b>Buy free spins</b> for <b>100×</b> the bet (ante must be off).</p>
-      <p><b>Tips.</b> Tap the board or press Space during a spin to hurry it. Space spins, ↑/↓ change the bet, T toggles turbo, M mutes.</p>
-
-      <h3>Game facts</h3>
-      <div class="facts">
-        <div><span>Return to player</span><b>≈ 96.5%</b></div>
-        <div><span>Volatility</span><b>Very high</b></div>
-        <div><span>Max win</span><b>5,000× bet</b></div>
-        <div><span>Hit frequency</span><b>≈ 26%</b></div>
-        <div><span>Free spins</span><b>≈ 1 in 273</b></div>
-        <div><span>With ante</span><b>≈ 1 in 157</b></div>
-      </div>
-      <p class="note">Measured over 16 million simulated spins of this exact engine (<code>tools/sim.js</code>). Base, ante and bonus-buy all return about 96.5%. Most of the time a spin pays nothing; the value sits in rare, large features.</p>
-
-      <h3>Paytable <span class="faint">(× bet)</span></h3>
-      <div id="paytable" class="paytable"></div>
-      <button class="primary" data-close>Close</button>
-    </div>
+    <div class="card" tabindex="-1" id="rulesCard"></div>
   </div>
 
   <!-- Settings -->
@@ -115,7 +89,7 @@
       <label class="row"><span>Phone tilt effect <small>(the board shifts as you tilt your phone)</small></span><input type="checkbox" id="tiltToggle" class="switch" /></label>
       <label class="row" id="hapticsRow"><span>Vibration</span><input type="checkbox" id="hapticsToggle" class="switch" /></label>
       <label class="row"><span>Reduce motion <small>(no shake, zoom or tilt)</small></span><input type="checkbox" id="motionToggle" class="switch" /></label>
-      <button id="resetCredit" class="ghost">Reset demo balance</button>
+      <button id="resetCredit" class="ghost demo-only">Reset demo balance</button>
       <button class="primary" data-close>Close</button>
     </div>
   </div>
@@ -146,12 +120,12 @@
   <!-- Buy confirmation -->
   <div id="m-buy" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-buy">
     <div class="card narrow center" tabindex="-1">
-      <h2 id="t-buy">Buy free spins</h2>
-      <p>Buy <b>15 free spins</b> for</p>
+      <h2 id="t-buy" data-t="buyTitle">Buy free spins</h2>
+      <p data-th="buyLead">Buy <b>15 free spins</b> for</p>
       <div class="big-price" id="buyPrice"></div>
       <div class="btn-row">
         <button class="ghost" data-close>Cancel</button>
-        <button id="buyConfirm" class="primary">Buy</button>
+        <button id="buyConfirm" class="primary" data-t="buyConfirm">Buy</button>
       </div>
     </div>
   </div>
@@ -159,11 +133,11 @@
   <!-- Out of credit -->
   <div id="m-credit" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-credit">
     <div class="card narrow center" tabindex="-1">
-      <h2 id="t-credit">Not enough credit</h2>
-      <p>Balance: <b id="creditNow"></b>. Lower the bet, or top up the demo balance.</p>
+      <h2 id="t-credit" data-t="lowTitle">Balance too low</h2>
+      <p id="creditText"></p>
       <div class="btn-row">
         <button class="ghost" data-close>Close</button>
-        <button id="creditReset" class="primary">Reset balance</button>
+        <button id="creditReset" class="primary demo-only">Reset balance</button>
       </div>
     </div>
   </div>
@@ -184,21 +158,55 @@
   <div id="m-menu" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-menu">
     <div class="card narrow" tabindex="-1">
       <h2 id="t-menu">Menu</h2>
-      <button class="menu-item" data-open="info">How to play &amp; paytable</button>
+      <button class="menu-item" data-open="info" data-t="menuRules">How to play &amp; paytable</button>
       <button class="menu-item" data-open="settings">Settings</button>
-      <button class="menu-item" data-open="fair">Provably fair &amp; history</button>
-      <button class="menu-item" data-open="stats">Stats &amp; achievements</button>
+      <button class="menu-item demo-only" data-open="fair">Provably fair &amp; history</button>
+      <button class="menu-item demo-only" data-open="stats">Stats &amp; achievements</button>
       <button class="menu-item" id="menuFull">Fullscreen</button>
       <button class="primary" data-close>Close</button>
     </div>
   </div>
 
+  <!-- Stake: something went wrong (blocking when the game can't start) -->
+  <div id="m-error" class="modal" hidden role="alertdialog" aria-modal="true" aria-labelledby="t-error" aria-describedby="errorText">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-error"></h2>
+      <p id="errorText"></p>
+      <div class="btn-row">
+        <button id="errorClose" class="ghost" data-t="errClose">Close</button>
+        <button id="errorReload" class="primary" data-t="errReload">Reload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stake: an unfinished round from last time -->
+  <div id="m-resume" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-resume">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-resume" data-t="resumeTitle">Unfinished round</h2>
+      <p id="resumeText"></p>
+      <div class="btn-row"><button id="resumeGo" class="primary" data-t="resumeGo">Continue</button></div>
+    </div>
+  </div>
+
+  <!-- Stake: replaying a past bet -->
+  <div id="m-replay" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-replay">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-replay" data-t="replayTitle">Replay</h2>
+      <div class="facts replay-facts" id="replayFacts"></div>
+      <div class="btn-row"><button id="replayGo" class="primary" data-t="replayPlay">Play replay</button></div>
+    </div>
+  </div>
+
+  <script src="js/strings.js"></script>
+  <script src="js/math-info.js"></script>
+  <script src="js/seb-frames.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/fair.js"></script>
   <script src="js/symbols.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/music.js"></script>
   <script src="js/core.js"></script>
+  <script src="js/rgs.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/scene.js"></script>
   <script src="js/board.js"></script>

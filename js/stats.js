@@ -1,4 +1,4 @@
-/* Gates of Sebastian — session & lifetime stats, achievements and toasts.
+/* Thunder Hunter Sebastian — session & lifetime stats, achievements and toasts.
  * game.js reports events (G.Stats.record); unlocked achievements queue a toast
  * that waits until no big overlay is showing. Lifetime stats persist in
  * localStorage under 'gos8.stats'.
@@ -11,13 +11,13 @@
 
   const ACH = [
     { id: 'first', name: 'First Strike', desc: 'Land your first win.' },
-    { id: 'big', name: 'Big Shot', desc: 'Win 15× your bet on one spin.' },
-    { id: 'epic', name: 'Epic Hunter', desc: 'Win 100× your bet on one spin.' },
-    { id: 'legend', name: 'Legend', desc: 'Win 500× your bet in one round.' },
+    { id: 'big', name: 'Big Shot', desc: 'Win 15× on one spin.' },
+    { id: 'epic', name: 'Epic Hunter', desc: 'Win 100× on one spin.' },
+    { id: 'legend', name: 'Legend', desc: 'Win 500× in one round.' },
     { id: 'chain', name: 'Chain Reaction', desc: 'Tumble 5 times in one spin.' },
-    { id: 'thunder', name: 'Thunderstruck', desc: 'Land a 100× multiplier orb.' },
+    { id: 'thunder', name: 'Bolt from the Blue', desc: 'Land a 100× multiplier orb.' },
     { id: 'wrath', name: 'Wrath of Sebastian', desc: 'Land a 500× multiplier orb.' },
-    { id: 'gates', name: 'Through the Gates', desc: 'Trigger free spins with scatters.' },
+    { id: 'gates', name: 'Into the Storm', desc: 'Trigger free spins with scatters.' },
     { id: 'encore', name: 'Encore', desc: 'Retrigger during free spins.' },
     { id: 'storm', name: 'Storm Caller', desc: 'Reach ×100 total multiplier in free spins.' },
     { id: 'close', name: 'So Close', desc: 'Land exactly 3 scatters 10 times.' },
@@ -46,7 +46,9 @@
   const both = fn => { fn(session); fn(life); };
   const max = (o, k, v) => { if (v > o[k]) o[k] = v; };
 
+  // the demo only: played through Stake or replaying there are no stats, achievements or toasts
   Stats.record = (ev, d) => {
+    if (G.mode !== 'demo') return;
     d = d || {};
     switch (ev) {
       case 'stake': both(o => { o.wagered += d.amount; if (d.buy) o.bought++; }); break;
@@ -120,16 +122,16 @@
     const rows = [
       ['Spins', o => o.spins.toLocaleString('en-US')],
       ['Free spins played', o => o.freeSpins.toLocaleString('en-US')],
-      ['Wagered', o => G.money(o.wagered)],
+      ['Total played', o => G.money(o.wagered)],
       ['Won', o => G.money(o.won)],
       ['Biggest win', o => o.bestWin ? `${G.money(o.bestWin)}` : '—'],
-      ['Biggest win (× bet)', o => o.bestWinX ? G.xfmt(Math.round(o.bestWinX * 100) / 100) : '—'],
+      ['Biggest win (×)', o => o.bestWinX ? G.xfmt(Math.round(o.bestWinX * 100) / 100) : '—'],
       ['Best multiplier', o => o.bestMult ? '×' + o.bestMult : '—'],
       ['Best orb', o => o.bestOrb ? o.bestOrb + '×' : '—'],
       ['Longest tumble chain', o => o.longestCascade || '—'],
-      ['Features', o => `${o.features}${o.bought ? ` (${o.bought} bought)` : ''}`],
+      ['Features', o => `${o.features}${o.bought ? ` (${o.bought} instant)` : ''}`],
       ['Retriggers', o => o.retriggers],
-      ['Best feature (× bet)', o => o.bestFeatureX ? G.xfmt(Math.round(o.bestFeatureX * 100) / 100) : '—'],
+      ['Best feature (×)', o => o.bestFeatureX ? G.xfmt(Math.round(o.bestFeatureX * 100) / 100) : '—'],
     ];
     document.getElementById('statsTable').innerHTML =
       '<tr><th></th><th>Session</th><th>All time</th></tr>' +

@@ -1,29 +1,34 @@
-/* Gates of Sebastian — DOM panels: info/paytable, settings, provably-fair
- * history + verifier, buy confirmation, out-of-credit and the mobile menu.
+/* Thunder Hunter Sebastian — DOM panels: rules, settings, provably-fair
+ * history + verifier (demo), buy confirmation, balance too low, the mobile
+ * menu, and for Stake play: errors, an unfinished round and the replay card.
  */
 (() => {
   'use strict';
-  const G = window.GOS, E = G.E, B = G.Board, S = G.S;
+  const G = window.GOS, E = G.E, B = G.Board, S = G.S, T = G.T, STR = window.GOS_STR;
   const PF = window.ProvablyFair;
   const UI = G.UI = {};
   const $ = id => document.getElementById(id);
-  const PANELS = ['info', 'settings', 'fair', 'buy', 'credit', 'menu', 'stats'];
+  const PANELS = ['info', 'settings', 'fair', 'buy', 'credit', 'menu', 'stats', 'error', 'resume', 'replay'];
   const revealed = {};   // server hash -> revealed seed
-  let lastFocus = null;
+  let lastFocus = null, blocking = false, onResume = null;
 
   UI.isOpen = () => PANELS.some(p => !$('m-' + p).hidden);
-  UI.closeAll = () => {
+  // a fatal error, an unfinished round and the replay card can't be dismissed
+  UI.isBlocking = () => blocking || !$('m-resume').hidden || (!$('m-replay').hidden && G.mode === 'replay');
+  UI.closeAll = force => {
+    if (UI.isBlocking() && force !== true) return;
     PANELS.forEach(p => { $('m-' + p).hidden = true; });
-    if (lastFocus && lastFocus.focus) lastFocus.focus(); else G.canvas.focus();
+    if (lastFocus && lastFocus.focus && lastFocus !== document.body) lastFocus.focus(); else G.canvas.focus();
   };
   UI.open = name => {
+    if (blocking) return;
     if (name === 'buy' && (S.busy || S.inFS)) return;
     PANELS.forEach(p => { $('m-' + p).hidden = p !== name; });
     lastFocus = document.activeElement;
     if (name === 'fair') renderFair();
     if (name === 'stats') G.Stats.renderPanel();
     if (name === 'buy') $('buyPrice').textContent = G.money(G.buyCost());
-    if (name === 'credit') $('creditNow').textContent = G.money(S.credit);
+    if (name === 'credit') $('creditText').innerHTML = T(G.allow('resetBalance') ? 'lowDemo' : 'lowLive', { v: G.money(S.credit) });
     UI.sync();
     const card = $('m-' + name).querySelector('.card');
     card.scrollTop = 0;
@@ -36,6 +41,7 @@
     else if (d.documentElement.requestFullscreen) d.documentElement.requestFullscreen().catch(() => {});
   };
   UI.sync = () => {
+    $('turboToggle').closest('.row').hidden = !G.allow('turbo');
     $('volSlider').value = Math.round(G.settings.volume * 100);
     $('musicToggle').checked = G.settings.music;
     $('sfxToggle').checked = G.settings.sfx;
@@ -49,10 +55,48 @@
     $('hapticsRow').hidden = !navigator.vibrate;     // iOS has no vibration API
   };
 
+  // ---------------- Stake cards ----------------
+  UI.showError = (title, msg, fatal) => {
+    PANELS.forEach(p => { $('m-' + p).hidden = p !== 'error'; });
+    blocking = !!fatal;
+    $('t-error').textContent = title; $('errorText').textContent = msg;
+    $('errorClose').hidden = !!fatal;
+    $('errorReload').hidden = !fatal;
+    $('m-error').querySelector('.card').focus({ preventScroll: true });
+  };
+  UI.showResume = (amount, go) => {
+    onResume = go;
+    $('resumeText').innerHTML = T('resumeLead', { v: G.money(amount) });
+    PANELS.forEach(p => { $('m-' + p).hidden = p !== 'resume'; });
+    $('resumeGo').focus({ preventScroll: true });
+  };
+  // the replay card: the bet, the mode and its cost before; the win after
+  UI.showReplay = (data, win) => {
+    const R = G.RGS, mode = R.replay.mode, bet = G.baseBet();
+    const cost = data && data.costMultiplier ? data.costMultiplier : (window.GOS_MATH && GOS_MATH.modes[mode] ? GOS_MATH.modes[mode].cost : 1);
+    const name = { base: T('modeBase'), ante: T('modeAnte'), bonus: T('modeBonus') }[mode] || mode;
+    const rows = [[T('replayMode'), name], [T('replayBet'), G.money(bet)]];
+    if (Math.abs(cost - 1) > 1e-9) rows.push([T('replayCost'), G.xfmt(cost) + ' · ' + G.money(bet * cost)]);
+    if (win != null) rows.push([T('replayTotal'), G.money(win)]);
+    $('replayFacts').innerHTML = rows.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+    $('replayGo').textContent = win == null ? T('replayPlay') : T('replayAgain');
+    PANELS.forEach(p => { $('m-' + p).hidden = p !== 'replay'; });
+    $('replayGo').focus({ preventScroll: true });
+  };
+
   UI.init = () => {
     document.querySelectorAll('.modal').forEach(m => {
       m.addEventListener('pointerdown', e => { if (e.target === m) UI.closeAll(); });
     });
+    // things that only exist in the demo (local balance, fairness, stats)
+    document.querySelectorAll('.demo-only').forEach(el => { el.hidden = G.mode !== 'demo'; });
+    $('menuFull').hidden = !G.allow('fullscreen');
+    $('fineText').textContent = G.mode === 'demo' ? T('fineDemo') : T('fineLive');
+    $('errorClose').addEventListener('click', () => { UI.closeAll(true); });
+    $('errorReload').addEventListener('click', () => location.reload());
+    $('resumeGo').addEventListener('click', () => { const go = onResume; onResume = null; UI.closeAll(true); if (go) go(); });
+    $('replayGo').addEventListener('click', () => { AudioEngine.resume(); G.Game.startReplay(); });
+    buildRules();
     document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { AudioEngine.play('click'); UI.closeAll(); }));
     document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => { AudioEngine.play('click'); UI.open(b.dataset.open); }));
     $('menuFull').addEventListener('click', () => { UI.closeAll(); UI.fullscreen(); });
@@ -71,7 +115,7 @@
     });
     $('hapticsToggle').addEventListener('change', e => { G.settings.haptics = e.target.checked; G.save(); if (e.target.checked) G.haptic(30); });
     $('resetStats').addEventListener('click', () => {
-      if (!confirm('Reset all stats and achievements?')) return;
+      if (!window.confirm('Reset all stats and achievements?')) return;
       G.Stats.reset(); G.Stats.renderPanel();
     });
     $('resetCredit').addEventListener('click', () => { G.Game.resetCredit(); UI.closeAll(); });
@@ -106,6 +150,7 @@
     });
 
     buildPaytable();
+    STR.apply();
     UI.sync();
   };
 
@@ -120,6 +165,63 @@
     $('historyList').innerHTML = rows || '<tr><td colspan="5" class="faint">No spins yet.</td></tr>';
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+
+  // ---------------- rules ----------------
+  // Built from the published math (js/math-info.js), in the right wording for
+  // the mode, listing only the controls this mode has.
+  function buildRules() {
+    const so = STR.social, w = (a, b) => (so ? b : a);
+    const M = window.GOS_MATH || { modes: {} }, md = M.modes;
+    const bet = w('bet', 'play amount');
+    const rtp = m => (md[m] ? md[m].rtp.toFixed(2) : '96.50') + '%';
+    const cost = m => (md[m] ? md[m].cost : { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X }[m]);
+    const ctl = [
+      [w('Spin', 'Spin') + ' (Space / Enter)', G.allow('slam') ? 'Starts a round. Press again, or tap the board, to hurry the spin along; it also skips win animations.' : 'Starts a round. It also skips win animations.'],
+      G.allow('bet') && ['− / + (↓ / ↑)', `Lower or raise the ${bet}.`],
+      G.allow('ante') && [w('Double chance', 'Double chance'), `Costs 1.25× the ${bet} for each spin and free spins trigger more often. Wins are still multiples of the ${bet}.`],
+      G.allow('buy') && [w('Buy free spins', 'Get free spins'), `Starts 15 free spins straight away for ${cost('bonus')}× the ${bet}. Double chance must be off.`],
+      G.allow('auto') && ['Autoplay', 'Plays 10, 25, 50, 100 or unlimited rounds in a row. Press it again, or press Spin, to stop. It also stops when the balance is too low.'],
+      G.allow('turbo') && ['Turbo (T)', 'Faster animations. The outcome is the same.'],
+      ['Info (I)', 'These rules.'],
+      ['Settings', 'Volume, music, sound effects, graphics, motion and more.'],
+      ['Sound (M)', 'Mutes or unmutes the game.'],
+      G.allow('fair') && ['History & fairness', 'Your recent spins and the seeds to check them.'],
+      G.allow('stats') && ['Stats & achievements', 'Your session and all-time stats.'],
+      G.allow('fullscreen') && ['Fullscreen', 'Fills the screen; on phones it lives in the menu.'],
+      ['Menu (phones)', 'Info, settings and fullscreen on small screens.'],
+      ['Esc', 'Closes a panel.'],
+    ].filter(Boolean);
+    const modes = [
+      ['base', 'Base game', `Costs 1× the ${bet}.`],
+      G.allow('ante') && ['ante', 'Double chance', `Costs ${cost('ante')}× the ${bet}; free spins trigger more often.`],
+      G.allow('buy') && ['bonus', w('Buy free spins', 'Get free spins'), `Costs ${cost('bonus')}× the ${bet}; starts the free spins straight away.`],
+    ].filter(Boolean);
+    $('rulesCard').innerHTML = `
+      <h2 id="t-info">How to play</h2>
+      <p><b>${w('Pay anywhere', 'Win anywhere')}.</b> No paylines: land <b>8 or more</b> of the same symbol anywhere on the 6×5 grid to win. Wins are multiples of the ${bet}.</p>
+      <p><b>Tumble.</b> Winning symbols shatter, the rest fall and new ones drop in. Tumbling repeats while new wins form, so one spin can chain many wins.</p>
+      <p><b>Multiplier orbs.</b> On any winning tumble, Sebastian can fire an orb worth one of these:</p>
+      <div id="orbList" class="orb-list"></div>
+      <p>Orbs fly into the <b>multiplier</b> collector. When the tumbling stops, its total multiplies the spin's win.</p>
+      <p class="with-icon"><canvas id="scatterIcon" width="64" height="64" aria-hidden="true"></canvas>
+        <span><b>Free spins.</b> Scatters are counted once all tumbles have finished and don't win on their own. <b>4+ scatters</b> award <b>15 free spins</b>. In the feature, every orb is <b>saved</b> into a total multiplier that applies to every winning spin until the feature ends. <b>3+ scatters</b> in the feature add <b>+5 spins</b>.</span></p>
+      <p><b>Max win.</b> A round can win at most <b>${E.MAX_WIN_X.toLocaleString('en-US')}×</b> the ${bet}. Reaching it ends the round straight away, including any free spins left.</p>
+      <h3>Game modes</h3>
+      <div class="facts modes">${modes.map(([m, name, d]) => `<div><span><b>${name}</b> · ${d}</span><b>RTP ${rtp(m)}</b></div>`).join('')}</div>
+      <div class="facts">
+        <div><span>Max win</span><b>${E.MAX_WIN_X.toLocaleString('en-US')}×</b></div>
+        <div><span>Volatility</span><b>Very high</b></div>
+      </div>
+      <p class="note">RTP (return to player) is the theoretical average over a very large number of rounds. Any one session can return far more or far less.</p>
+      <h3>${w('Paytable', 'Symbol wins')} <span class="faint">(× ${bet})</span></h3>
+      <div id="paytable" class="paytable"></div>
+      <h3>Controls</h3>
+      <dl class="controls">${ctl.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+      <h3>Disclaimer</h3>
+      <p class="note">Malfunction voids all ${w('pays', 'wins')} and plays. A consistent internet connection is required; if the connection drops, reload the game to finish any unfinished round. The expected return is calculated over many plays. The game display is not representative of any physical device and is for illustrative purposes only. ${G.mode === 'demo' ? 'This demo plays with a local balance only.' : 'Winnings are settled according to the amount received from the Remote Game Server and not from events within the web browser.'}</p>
+      <p class="note">${STR.T('title')} · © 2026 Fiskce</p>
+      <button class="primary" data-close>Close</button>`;
+  }
 
   function buildPaytable() {
     const host = $('paytable');

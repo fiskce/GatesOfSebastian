@@ -1,4 +1,4 @@
-/* Gates of Sebastian — overlays: big-win count-up, free-spins intro/outro,
+/* Thunder Hunter Sebastian — overlays: big-win count-up, free-spins intro/outro,
  * banners, the multiplier slam and small win pops. Each overlay is an item
  * with update/draw; game.js awaits the promise each show* call returns.
  * Tap / click / Space calls G.skip(), which fast-forwards whatever is showing.
@@ -53,7 +53,7 @@
   O.bigWin = (amount, bet, autoMs) => new Promise(res => {
     const x = amount / bet, top = Math.max(0, O.tierFor(x));
     const dur = 2.4 + top * 1.6, hold = (autoMs || 2600) / 1000;
-    const it = { block: true, t: 0, shown: 0, tier: 0, tickT: 0, phase: 'count', closeT: 0, tierT: 0 };
+    const it = { block: true, t: 0, shown: 0, tier: 0, tickT: 0, phase: 'count', closeT: 0, tierT: 0, amount };
     AudioEngine.duck(0.2, dur + hold); AudioEngine.play('bigwin');
     G.Seb.cut = it; G.Seb.cheer(1); G.Seb.say('big');
     const finish = () => {
@@ -98,11 +98,11 @@
       ctx.save(); ctx.translate(cx, cy + m * 0.04);
       const s2 = it.phase === 'count' ? 1 : 1 + Math.max(0, 1 - (it.t - it.closeT) / 0.3) * 0.15;
       ctx.scale(s2, s2);
-      G.goldText(ctx, G.money(it.shown), 0, 0, m * 0.13, { display: false, weight: 800, maxW: G.W * 0.92, glow: 'rgba(255,190,60,.8)',
+      G.goldText(ctx, G.money(it.shown, G.countPlaces(it.amount)), 0, 0, m * 0.13, { display: false, weight: 800, maxW: G.W * 0.92, glow: 'rgba(255,190,60,.8)',
         colors: ['#ffffff', '#fff1a8', '#ffcf3a', '#e08a12', '#ffe58a'] });
       ctx.restore();
-      G.text(ctx, G.xfmt(Math.round(it.shown / bet * 100) / 100) + ' BET', cx, cy + m * 0.15, m * 0.032, '#f6e3ff', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
-      if (it.phase !== 'count') G.text(ctx, 'TAP TO CONTINUE', cx, cy + m * 0.26, m * 0.026, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
+      G.text(ctx, G.xfmt(Math.round(it.shown / bet * 100) / 100), cx, cy + m * 0.15, m * 0.032, '#f6e3ff', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
+      if (it.phase !== 'count') G.text(ctx, G.T('tapContinue'), cx, cy + m * 0.26, m * 0.026, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
       G.Seb.drawCutBubble(ctx);
       ctx.restore();
     };
@@ -136,10 +136,10 @@
       ctx.save(); ctx.translate(cx, cy); ctx.scale(k * pulse(4), k * pulse(4));
       G.text(ctx, 'CONGRATULATIONS!', 0, -m * 0.2, m * 0.04, '#f6e3ff', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)' });
       G.goldText(ctx, String(award), 0, -m * 0.06, m * 0.2, { glow: 'rgba(255,140,30,.9)' });
-      G.goldText(ctx, 'FREE SPINS', 0, m * 0.08, m * 0.085, { maxW: G.W * 0.9 });
+      G.goldText(ctx, G.T('fsAwarded'), 0, m * 0.08, m * 0.085, { maxW: G.W * 0.9 });
       ctx.restore();
       G.text(ctx, 'Every multiplier is saved and stacks for the whole feature', cx, cy + m * 0.19, m * 0.026, '#ffe9b0', { weight: 600, maxW: G.W * 0.9, shadow: 'rgba(0,0,0,.8)' });
-      if (it.t > 0.8) G.text(ctx, 'TAP TO START', cx, cy + m * 0.28, m * 0.03, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 800 });
+      if (it.t > 0.8) G.text(ctx, G.T('tapStart'), cx, cy + m * 0.28, m * 0.03, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 800 });
       ctx.restore();
     };
     O.items.push(it);
@@ -147,7 +147,7 @@
 
   // ---------------- free spins outro ----------------
   O.fsOutro = (total, spins, bet, autoMs) => new Promise(res => {
-    const it = { block: true, t: 0, phase: 'in', closeT: 0, shown: 0 };
+    const it = { block: true, t: 0, phase: 'in', closeT: 0, shown: 0, total };
     AudioEngine.duck(0.25, 4); AudioEngine.play(total / bet >= 15 ? 'bigwin' : 'win');
     if (total / bet >= 15) G.Seb.cheer(1.2);
     const countDur = total > 0 ? 1.8 : 0.01;
@@ -168,13 +168,13 @@
       ctx.save(); ctx.globalAlpha = a;
       backdrop(ctx, 1);
       drawRays(ctx, cx, cy, m * 1.5, 0.4);
-      G.goldText(ctx, 'FEATURE COMPLETE', cx, cy - m * 0.18, m * 0.07, { maxW: G.W * 0.9, glow: 'rgba(255,140,30,.8)' });
-      G.text(ctx, 'YOU WON', cx, cy - m * 0.07, m * 0.04, '#f6e3ff', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)' });
+      G.goldText(ctx, G.T('fsComplete'), cx, cy - m * 0.18, m * 0.07, { maxW: G.W * 0.9, glow: 'rgba(255,140,30,.8)' });
+      G.text(ctx, G.T('youWon'), cx, cy - m * 0.07, m * 0.04, '#f6e3ff', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)' });
       ctx.save(); ctx.translate(cx, cy + m * 0.05); ctx.scale(pulse(4), pulse(4));
-      G.goldText(ctx, G.money(it.shown), 0, 0, m * 0.12, { display: false, weight: 800, maxW: G.W * 0.9, glow: 'rgba(255,190,60,.8)' });
+      G.goldText(ctx, G.money(it.shown, G.countPlaces(it.total)), 0, 0, m * 0.12, { display: false, weight: 800, maxW: G.W * 0.9, glow: 'rgba(255,190,60,.8)' });
       ctx.restore();
-      G.text(ctx, `IN ${spins} FREE SPINS`, cx, cy + m * 0.16, m * 0.032, '#ffe9b0', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
-      if (it.t > 1) G.text(ctx, 'TAP TO CONTINUE', cx, cy + m * 0.26, m * 0.026, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
+      G.text(ctx, G.T('inSpins', { n: spins }), cx, cy + m * 0.16, m * 0.032, '#ffe9b0', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
+      if (it.t > 1) G.text(ctx, G.T('tapContinue'), cx, cy + m * 0.26, m * 0.026, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
       ctx.restore();
     };
     O.items.push(it);

@@ -1,4 +1,4 @@
-/* Gates of Sebastian — core: shared namespace, game clock, helpers, layout.
+/* Thunder Hunter Sebastian — core: shared namespace, game clock, helpers, layout.
  *
  * Every script adds to the single GOS namespace (classic scripts, no build
  * step, works from file:// too). Animation waits run on a *game clock* rather
@@ -8,7 +8,7 @@
 window.GOS = (() => {
   'use strict';
   const E = window.Engine;
-  const G = { E, Music: window.GOSMusic };
+  const G = { E, Music: window.GOSMusic, mode: 'demo' };
 
   // ---------------- canvas ----------------
   G.canvas = document.getElementById('game');
@@ -67,8 +67,39 @@ window.GOS = (() => {
     outElastic: t => t === 0 || t === 1 ? t : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (2 * Math.PI) / 3) + 1,
   };
 
-  // ---------------- formatting ----------------
-  G.money = n => '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // ---------------- wording ----------------
+  G.T = window.GOS_STR.T;
+
+  // ---------------- money ----------------
+  // [symbol, symbol after the amount, decimals]. Social currencies read "10.00 SC".
+  const CURRENCIES = {
+    USD: ['$'], CAD: ['CA$'], MXN: ['MX$'], EUR: ['€'], GBP: ['£'], AUD: ['A$'], NZD: ['NZ$'], BRL: ['R$'], INR: ['₹'],
+    JPY: ['¥', false, 0], KRW: ['₩', false, 0], IDR: ['Rp', false, 0], NGN: ['₦', false, 0], CNY: ['CN¥'], TRY: ['₺'],
+    PHP: ['₱'], ZAR: ['R'], RUB: ['₽', true], CHF: ['CHF '], SEK: ['kr', true], NOK: ['kr', true], CZK: ['Kč', true],
+    DKK: ['kr.', true], PLN: ['zł', true], VND: ['₫', true, 0], CLP: ['CLP', true, 0], ARS: ['ARS', true], PEN: ['S/', true],
+    SAR: ['SAR', true], ILS: ['₪', true], AED: ['AED', true], TND: ['TND', true], OMR: ['OMR', true], QAR: ['QAR', true],
+    XSC: ['SC', true], XEC: ['SC', true], XGC: ['GC', true],
+  };
+  G.currency = 'USD';
+  G.setCurrency = code => { G.currency = String(code || 'USD').toUpperCase(); };
+  function cur() {
+    const c = CURRENCIES[G.currency];
+    return c ? { sym: c[0], after: !!c[1], dec: c[2] == null ? 2 : c[2] } : { sym: G.currency, after: true, dec: 2 };
+  }
+  // the currency's decimals, or more when the value isn't exact at that (sub-cent amounts), up to 6
+  G.placesFor = n => {
+    let p = cur().dec;
+    const u = Math.round(Math.abs(n) * 1e6);
+    while (p < 6 && u % Math.pow(10, 6 - p) !== 0) p++;
+    return p;
+  };
+  // a counting animation shows the decimals of the amount it is counting to, so digits don't come and go
+  G.countPlaces = to => G.placesFor(to);
+  G.money = (n, places) => {
+    const c = cur(), p = places != null ? places : G.placesFor(n);
+    const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: p, maximumFractionDigits: p });
+    return (n < 0 ? '-' : '') + (c.after ? s + ' ' + c.sym : c.sym + s);
+  };
   G.xfmt = n => (Math.round(n * 100) / 100).toLocaleString('en-US') + '×';
 
   // ---------------- fonts ----------------
@@ -117,21 +148,29 @@ window.GOS = (() => {
   G.buyCost = () => G.baseBet() * E.BUY_COST_X;
 
   // ---------------- persistence (best effort) ----------------
-  // v8 has its own key; the first visit carries the v7 balance and settings over.
-  const KEY = 'gos8', OLD_KEY = 'gos7';
+  // v9 has its own key; the first visit carries the v8/v7 balance and settings over.
+  // Played through Stake (or replaying) only the settings are kept: the balance,
+  // bet and mode always come from the RGS.
+  const KEY = 'gos9', OLD_KEYS = ['gos8', 'gos7'];
   G.load = () => {
     try {
-      const d = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY) || 'null');
+      let raw = localStorage.getItem(KEY);
+      for (let k = 0; !raw && k < OLD_KEYS.length; k++) raw = localStorage.getItem(OLD_KEYS[k]);
+      const d = JSON.parse(raw || 'null');
       if (!d) return;
+      if (d.settings) Object.assign(G.settings, d.settings);
+      if (G.mode !== 'demo') return;
       if (Number.isFinite(d.credit)) G.S.credit = d.credit;
       if (Number.isInteger(d.betIndex)) G.S.betIndex = G.clamp(d.betIndex, 0, G.BET_STEPS.length - 1);
       G.S.ante = !!d.ante;
-      if (d.settings) Object.assign(G.settings, d.settings);
     } catch (e) { /* storage unavailable */ }
   };
   G.save = () => {
-    try { localStorage.setItem(KEY, JSON.stringify({ credit: G.S.credit, betIndex: G.S.betIndex, ante: G.S.ante, settings: G.settings })); }
-    catch (e) { /* storage unavailable */ }
+    try {
+      const d = G.mode === 'demo' ? { credit: G.S.credit, betIndex: G.S.betIndex, ante: G.S.ante, settings: G.settings } : { settings: G.settings };
+      if (G.mode !== 'demo') { const old = JSON.parse(localStorage.getItem(KEY) || 'null'); if (old) Object.assign(old, d); localStorage.setItem(KEY, JSON.stringify(old || d)); }
+      else localStorage.setItem(KEY, JSON.stringify(d));
+    } catch (e) { /* storage unavailable */ }
   };
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) G.settings.reducedMotion = true;
 
@@ -182,7 +221,7 @@ window.GOS = (() => {
   G.L = {};
   G.layout = () => {
     const W = G.W, H = G.H;
-    G.L = W / H < 1.15 ? portrait(W, H) : landscape(W, H);
+    G.L = W / H < 1.15 ? portrait(W, H) : (H < 330 || W < 560) ? compact(W, H) : landscape(W, H);
     G.L.buttons = [];
     if (G.onLayout) G.onLayout();
   };
@@ -236,6 +275,34 @@ window.GOS = (() => {
     L.logo = { x: rp.x, y: L.pad, w: rp.w, h: Math.min(rp.w * 0.42, H * 0.17) };
     const sebTop = L.logo.y + L.logo.h + L.pad;
     L.seb = { x: rp.x, y: sebTop, w: rp.w, h: H - L.botH - sebTop + L.botH * 0.12 };
+    L.plaque = { cx: r.x + r.w / 2, y: L.topH * 0.5 };
+    return L;
+  }
+
+  // short landscape windows (down to 400x225): no logo, no Sebastian, no hint line;
+  // buy + bet on the left, the multiplier on the right, one slim bottom bar
+  function compact(W, H) {
+    const L = { portrait: false, compact: true, noLogo: true, noSeb: true, noHint: true };
+    L.pad = 4;
+    L.botH = Math.round(G.clamp(H * 0.2, 40, 60));
+    L.topH = Math.round(G.clamp(H * 0.11, 20, 32));
+    L.hintH = 0;
+    L.fp = Math.round(G.clamp(H * 0.025, 4, 10));
+    const sideW = Math.round(G.clamp(W * 0.2, 74, 150)), gap = 6;
+    const bandY = L.topH, bandH = H - L.topH - L.botH - 4;
+    gridFit(L, sideW + gap * 2, bandY, W - (sideW + gap * 2) * 2, bandH);
+    const r = L.reel;
+    const top = r.y, colH = r.h;
+    L.left = { x: r.x - gap - sideW, y: top, w: sideW, h: colH };
+    const buyH = Math.round(colH * 0.42);
+    L.buy = { x: L.left.x, y: top, w: sideW, h: buyH };
+    L.bet = { x: L.left.x, y: top + buyH + gap, w: sideW, h: colH - buyH - gap };
+    L.well = { x: r.x + r.w + gap, y: top, w: sideW, h: colH };
+    L.right = L.well;
+    L.seb = L.well;
+    L.logo = { x: 0, y: 0, w: 1, h: 1 };
+    L.bottom = { x: 0, y: H - L.botH, w: W, h: L.botH };
+    L.hintY = H;
     L.plaque = { cx: r.x + r.w / 2, y: L.topH * 0.5 };
     return L;
   }

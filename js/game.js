@@ -1,10 +1,14 @@
-/* Gates of Sebastian — game flow, input, render loop and boot.
+/* Thunder Hunter Sebastian — game flow, input, render loop and boot.
  *
- * Every spin is decided up front by the engine (E.playSpin) from a provably
- * fair random stream; this file only *presents* that result: it drops the
- * board, plays each tumble step, throws the orbs, applies the multiplier and
- * celebrates. Payouts always come from the engine's evaluate(), so what the
- * player is paid is exactly what tools/sim.js measures.
+ * Every spin is decided before it is shown. In the demo it comes from the
+ * engine (E.playSpin) on a provably-fair random stream; played through Stake
+ * it comes from the RGS: the round's book events, rebuilt by E.expandSpin.
+ * Either way this file only *presents* the result: it drops the board, plays
+ * each tumble step, throws the orbs, applies the multiplier and celebrates.
+ *
+ * A round asks G.Wallet for its spins (begin) and settles afterwards (settle).
+ * The demo wallet charges the local balance; the RGS wallet calls
+ * /wallet/play and /wallet/end-round (see js/rgs.js).
  */
 (() => {
   'use strict';
@@ -12,6 +16,7 @@
   const S = G.S;
   const { COLS, ROWS, CELLS, SCATTER, SCATTERS_FS, SCATTERS_RETRIG, FS_AWARD, FS_RETRIGGER, MAX_WIN_X } = E;
   const PF = window.ProvablyFair;
+  const R = G.RGS, T = G.T;
   const Game = G.Game = {};
   const ctx = G.ctx;
 
@@ -42,31 +47,106 @@
     }
   }
 
-  // ---------------- round orchestration ----------------
-  function canAfford(buy) { return S.credit >= (buy ? G.buyCost() : G.spinCost()) - 1e-9; }
+  // ---------------- wallets ----------------
+  // begin(mode) charges for a round and returns where its spins come from;
+  // settle(src) closes it. mode: 'base' | 'ante' | 'bonus'.
+  const costOf = mode => mode === 'bonus' ? G.buyCost() : mode === 'ante' ? G.baseBet() * E.ANTE_COST : G.baseBet();
+  function lowBalance() { const e = new Error('low balance'); e.code = 'LOW'; return e; }
+  const DemoWallet = {
+    canAfford: mode => S.credit >= costOf(mode) - 1e-9,
+    async begin(mode) {
+      if (!DemoWallet.canAfford(mode)) throw lowBalance();
+      const stake = costOf(mode);
+      S.credit -= stake;
+      G.Stats.record('stake', { amount: stake, buy: mode === 'bonus' });
+      G.save();
+      return demoSource();
+    },
+    async settle() {},
+  };
+  // the demo's spins: the engine on the provably-fair stream, logged for the verifier
+  function demoSource() {
+    return {
+      next(mode, o) {
+        const rng = PF.nextRng();
+        const entry = { nonce: PF.nonce, serverHash: PF.serverHash, clientSeed: PF.clientSeed, mode, buy: !!o.buy,
+          persistent: o.persistent, bet: o.bet, time: Date.now() };
+        return { out: E.playSpin(rng, mode, { buy: o.buy, persistent: o.persistent }), entry };
+      },
+      hasNext: () => true,
+    };
+  }
+  const RgsWallet = {
+    // the balance check is done in integers; a stale balance gets one refresh before saying no
+    canAfford: mode => R.balanceMicro >= R.costMicro(mode, G.betMicro()),
+    async begin(mode) {
+      if (!RgsWallet.canAfford(mode)) {
+        try { await R.refreshBalance(); } catch (e) { /* keep the last known balance */ }
+        if (!RgsWallet.canAfford(mode)) throw lowBalance();
+      }
+      const round = await R.play(mode, G.betMicro());
+      return roundSource(round);
+    },
+    async settle(src) { await closeRound(src.round); },
+  };
+  function roundSource(round) {
+    let events;
+    try { events = R.eventsOf(round); } catch (e) { events = []; }
+    const src = R.eventSource(events);
+    src.round = round;
+    src.broken = !events.length;
+    return src;
+  }
+  // end-round only for a round that is still open (one that paid nothing is closed already)
+  async function closeRound(round) {
+    const open = round && (round.active === true || (round.active == null && +round.payoutMultiplier > 0));
+    if (!open) return;
+    try { await R.endRound(); }
+    catch (e) { S.locked = true; showError(T('errEndRound'), true); throw e; }
+  }
+  G.Wallet = G.mode === 'rgs' ? RgsWallet : DemoWallet;
+  Game.canAfford = mode => G.Wallet.canAfford(mode);
 
+  // ---------------- round orchestration ----------------
   async function round(buy) {
-    if (S.busy || S.inFS) return;
-    if (!canAfford(buy)) { S.auto = 0; G.UI.open('credit'); AudioEngine.play('denied'); return; }
-    const stake = buy ? G.buyCost() : G.spinCost();
-    S.credit -= stake;
-    G.Stats.record('stake', { amount: stake, buy });
+    if (S.busy || S.inFS || S.locked || G.mode === 'replay') return;
+    const mode = buy ? 'bonus' : S.ante ? 'ante' : 'base';
+    S.busy = true; S.autoMenu = false;            // claimed before any await: a second press can't start another round
+    let src;
+    try { src = await G.Wallet.begin(mode); }
+    catch (e) {
+      S.busy = false; S.auto = 0;
+      if (e.code === 'LOW' || e.code === 'ERR_IPB') { G.UI.open('credit'); AudioEngine.play('denied'); }
+      else showError(R ? R.message(e) : String(e));
+      return;
+    }
+    const t0 = performance.now();
     G.Seb.activity();
-    S.roundWin = 0; S.winDisplay = 0; S.busy = true; S.autoMenu = false;
-    G.save();
-    const r = await spin({ buy });
-    if (r.triggered && !r.maxed) await feature(!buy);
-    G.Music.setIntensity(0);
-    G.Stats.record('round', { winX: S.roundWin / G.baseBet() });
+    try { await present(src, buy); }
+    catch (e) { console.error(e); if (G.mode === 'rgs') showError(T('errState')); }
+    try { await G.Wallet.settle(src); } catch (e) { S.busy = false; S.auto = 0; return; }
+    // some jurisdictions set a minimum time per round
+    const minMs = G.mode === 'rgs' ? R.minRoundMs() : 0, left = minMs - (performance.now() - t0);
+    if (left > 0) await new Promise(r => setTimeout(r, left));
     S.busy = false; S.slam = false; setPace();
     G.save();
     if (S.auto > 0) {
       S.auto--;
       if (S.auto > 0) {
-        if (canAfford(false)) { await G.wait(320); if (S.auto > 0 && !S.busy) round(false); }
-        else { S.auto = 0; say('AUTOPLAY STOPPED — NOT ENOUGH CREDIT'); }
+        if (G.Wallet.canAfford(S.ante ? 'ante' : 'base')) { await G.wait(320); if (S.auto > 0 && !S.busy) round(false); }
+        else { S.auto = 0; say(T('msgAutoLow')); }
       }
     }
+  }
+
+  // plays a round's spins: the paid spin, then the free spins it triggered
+  async function present(src, buy) {
+    S.roundWin = 0; S.winDisplay = 0;
+    if (src.broken) throw new Error('round without events');
+    const r = await spin({ buy, src });
+    if (r.triggered && !r.maxed) await feature(!buy, src);
+    G.Music.setIntensity(0);
+    G.Stats.record('round', { winX: S.roundWin / G.baseBet() });
   }
 
   /* One spin (base, ante, buy or a free spin), fully presented. */
@@ -78,13 +158,10 @@
     else S.winDisplay = 0;
     const mode = S.inFS ? 'fs' : (S.ante && !opts.buy ? 'ante' : 'base');
     const persistentBefore = S.persistent;
-    const rng = PF.nextRng();
-    const entry = { nonce: PF.nonce, serverHash: PF.serverHash, clientSeed: PF.clientSeed, mode, buy: !!opts.buy,
-      persistent: persistentBefore, bet, time: Date.now() };
-    const out = E.playSpin(rng, mode, { buy: opts.buy, persistent: persistentBefore });
+    const { out, entry, winX100, capped } = opts.src.next(mode, { buy: opts.buy, persistent: persistentBefore, bet });
     AudioEngine.play('spin', { gain: 0.8 });
     G.Music.setIntensity(spinLevel());
-    if (S.inFS) say(`FREE SPIN ${S.fsPlayed} OF ${S.fsAward}`, false);
+    if (S.inFS) say(T('msgFreeSpin', { a: S.fsPlayed, b: S.fsAward }), false);
     else S.message = '';
 
     await dropBoard(out.board, mode);
@@ -99,43 +176,49 @@
       if (!S.inFS) S.spinMult = 0;          // the collector fires its charge
       await O.slam(out.ev.mult, w);
       say(`${G.money(S.tumbleWin)} × ${out.ev.mult}`, false);
-      await tween(S, 'tumbleShown', S.tumbleWin * out.ev.mult, 650, p => { if (Math.random() < 0.5) AudioEngine.play('tick', { rate: 1 + p }); });
+      S.countTo = S.tumbleWin * out.ev.mult;
+      await tween(S, 'tumbleShown', S.countTo, 650, p => { if (Math.random() < 0.5) AudioEngine.play('tick', { rate: 1 + p }); });
       await G.wait(250);
     }
     S.persistent = out.ev.persistentAfter;
 
-    // ---- max-win cap for the whole round
-    const capLeft = MAX_WIN_X * bet - S.roundWin;
+    // ---- max-win cap for the whole round (a book's spin carries its own, already capped)
     let maxed = false;
-    if (spinWin >= capLeft) { spinWin = capLeft; maxed = true; }
+    if (winX100 != null) { spinWin = winX100 * bet / 100; maxed = capped; }
+    else {
+      const capLeft = MAX_WIN_X * bet - S.roundWin;
+      if (spinWin >= capLeft) { spinWin = capLeft; maxed = true; }
+    }
 
     if (spinWin > 0) {
       S.credit += spinWin; S.roundWin += spinWin; S.lastWin = spinWin;
       if (S.inFS) S.fsTotal += spinWin;
       await celebrate(spinWin, bet);
     }
-    S.tumbleShown = 0;
+    S.tumbleShown = 0; S.countTo = null;
 
     G.Stats.record('spin', { free: mode === 'fs', win: spinWin, winX: spinWin / bet, cascades: S.cascade, mult: applies ? out.ev.mult : 0,
       nearMiss: mode !== 'fs' && !opts.buy && out.res.scatters === SCATTERS_FS - 1, maxed });
-    entry.winX = spinWin / bet; entry.rawWinX = out.ev.winX; entry.mult = out.ev.mult; entry.scatters = out.res.scatters;
-    entry.board = out.board.join(',');
-    S.history.unshift(entry); if (S.history.length > 200) S.history.pop();
+    if (entry) {
+      entry.winX = spinWin / bet; entry.rawWinX = out.ev.winX; entry.mult = out.ev.mult; entry.scatters = out.res.scatters;
+      entry.board = out.board.join(',');
+      S.history.unshift(entry); if (S.history.length > 200) S.history.pop();
+    }
 
     // ---- scatters
     const need = S.inFS ? SCATTERS_RETRIG : SCATTERS_FS;
     let triggered = false, retrig = false;
     if (maxed) {
-      await O.banner('MAX WIN', G.xfmt(MAX_WIN_X) + ' REACHED', 2200);
+      await O.banner(T('maxWin'), T('maxReached', { x: G.xfmt(MAX_WIN_X) }), 2200);
     } else if (!S.inFS && (opts.buy || out.res.scatters >= SCATTERS_FS)) {
       triggered = true; await scatterFanfare(out.res.finalBoard);
     } else if (S.inFS && out.res.scatters >= need) {
       retrig = true; G.Seb.say('retrigger'); G.Stats.record('retrigger'); await scatterFanfare(out.res.finalBoard);
       S.fsLeft += FS_RETRIGGER; S.fsAward += FS_RETRIGGER;
       AudioEngine.play('freespins', { gain: 0.8 });
-      await O.banner('+' + FS_RETRIGGER + ' FREE SPINS', 'RETRIGGER!', 1600);
+      await O.banner(T('fsMore', { n: FS_RETRIGGER }), T('fsRetrigger'), 1600);
     } else if (!S.inFS && out.res.scatters === SCATTERS_FS - 1) {
-      say('SO CLOSE — ONE MORE SCATTER!');
+      say(T('msgNear'));
       G.Seb.headShake(); G.Seb.say('near', 0.8);
     }
     if (!S.inFS) S.winDisplay = spinWin;
@@ -168,7 +251,7 @@
         if (!live()) return;
         drone = AudioEngine.anticipation(); AudioEngine.suspense(true);
         S.suspense = 1; G.Seb.lean(true); G.Music.heartbeat(true);
-        say(mode === 'fs' ? 'RETRIGGER?' : 'ONE MORE SCATTER…', false);
+        say(mode === 'fs' ? T('msgRetrigger') : T('msgOneMore'), false);
       });
     }
     try {
@@ -359,7 +442,7 @@
     B.highlight(set, false);
   }
 
-  async function feature(natural) {
+  async function feature(natural, src) {
     G.Stats.record('feature', { natural });
     G.haptic([40, 40, 80]);
     await O.fsIntro(FS_AWARD, S.auto > 0 ? 2600 : 7000);
@@ -369,16 +452,18 @@
     Scene.lightning(true);
     await G.wait(700);
     while (S.fsLeft > 0) {
-      const r = await spin({});
+      if (!src.hasNext()) { console.warn('the round has no more free spins'); break; }
+      const r = await spin({ src });
       if (r.maxed) break;
       await G.wait(380);
     }
+    if (src.left && src.left() > 0) console.warn(src.left() + ' spins left over in the round');
     await O.fsOutro(S.fsTotal, S.fsPlayed, G.baseBet(), S.auto > 0 ? 2600 : 6000);
     G.Seb.say(S.fsTotal / G.baseBet() >= 20 ? 'fsGood' : 'fsBad');
     G.Stats.record('featureEnd', { totalX: S.fsTotal / G.baseBet() });
     S.inFS = false; S.persistent = 0; S.moodTarget = 0; AudioEngine.musicMode('base');
     S.winDisplay = S.roundWin;
-    say('FEATURE WON ' + G.money(S.fsTotal));
+    say(T('msgFeatureDone', { v: G.money(S.fsTotal) }));
   }
 
   // ---------------- player actions ----------------
@@ -388,50 +473,58 @@
     if (S.autoMenu) { S.autoMenu = false; return; }
     if (S.auto > 0) { Game.stopAuto(); return; }
     if (S.busy) { Game.slam(); return; }
+    if (G.mode === 'replay') { Game.startReplay(); return; }
     round(false);
   };
   Game.slam = () => {
-    if (!S.busy || S.slam) return;
+    if (!S.busy || S.slam || !G.allow('slam')) return;
     S.slam = true; G.cancelSlowmo(); FX.release(); setPace(); B.hurry();
     G.haptic(10);
   };
   Game.askBuy = () => {
-    if (S.busy || S.inFS) return;
-    if (S.ante) { say('TURN OFF DOUBLE CHANCE TO BUY'); return; }
+    if (S.busy || S.inFS || !G.allow('buy')) return;
+    if (S.ante) { say(T('msgAnteFirst')); AudioEngine.play('denied', { gain: 0.6 }); return; }
+    if (!G.Wallet.canAfford('bonus')) { say(T('msgTooLow')); G.UI.open('credit'); return; }
     G.UI.open('buy');
   };
   Game.buy = () => round(true);
   Game.toggleAnte = () => {
-    if (S.busy || S.inFS) return;
+    if (S.busy || S.inFS || !G.allow('ante')) return;
     S.ante = !S.ante; G.save();
     AudioEngine.play(S.ante ? 'coin' : 'click');
-    say(S.ante ? 'DOUBLE CHANCE ON · +25% STAKE' : 'DOUBLE CHANCE OFF');
+    say(S.ante ? T('msgAnteOn') : T('msgAnteOff'));
   };
   Game.bet = d => {
-    if (S.busy || S.inFS || S.auto > 0) return;
+    if (S.busy || S.inFS || S.auto > 0 || !G.allow('bet')) return;
     S.betIndex = G.clamp(S.betIndex + d, 0, G.BET_STEPS.length - 1); G.save();
-    AudioEngine.play('click', { rate: 0.8 + S.betIndex * 0.04 });
-    say('BET ' + G.money(G.spinCost()));
+    AudioEngine.play('click', { rate: 0.8 + Math.min(S.betIndex, 20) * 0.04 });
+    say(T('msgBet', { v: G.money(G.baseBet()) }));
   };
-  Game.toggleTurbo = () => { G.settings.turbo = !G.settings.turbo; setPace(); G.save(); G.UI.sync(); say(G.settings.turbo ? 'TURBO ON' : 'TURBO OFF'); };
+  Game.toggleTurbo = () => {
+    if (!G.allow('turbo')) return;
+    G.settings.turbo = !G.settings.turbo; setPace(); G.save(); G.UI.sync(); say(G.settings.turbo ? T('msgTurboOn') : T('msgTurboOff'));
+  };
   Game.toggleSound = () => {
     const on = !(G.settings.sfx || G.settings.music);
     G.settings.sfx = on; G.settings.music = on; Game.applySettings(); G.save(); G.UI.sync();
   };
   Game.autoPressed = () => {
-    if (S.inFS) return;
+    if (S.inFS || !G.allow('auto')) return;
     if (S.auto > 0) { Game.stopAuto(); return; }
     S.autoMenu = !S.autoMenu;
   };
   Game.startAuto = n => {
     S.autoMenu = false;
-    if (S.busy) return;
-    if (!canAfford(false)) { G.UI.open('credit'); return; }
-    S.auto = n; say(n === Infinity ? 'AUTOPLAY ∞' : 'AUTOPLAY ' + n);
+    if (S.busy || !G.allow('auto')) return;
+    if (!G.Wallet.canAfford(S.ante ? 'ante' : 'base')) { G.UI.open('credit'); return; }
+    S.auto = n; say(n === Infinity ? T('autoplay') + ' ∞' : T('autoplay') + ' ' + n);
     round(false);
   };
-  Game.stopAuto = () => { S.auto = 0; say('AUTOPLAY STOPPED'); };
-  Game.resetCredit = () => { if (S.busy) return; S.credit = G.START_CREDIT; G.save(); say('BALANCE RESET TO ' + G.money(S.credit)); };
+  Game.stopAuto = () => { S.auto = 0; say(T('msgAutoStopped')); };
+  Game.resetCredit = () => {
+    if (S.busy || !G.allow('resetBalance')) return;
+    S.credit = G.START_CREDIT; G.save(); say(T('msgBalanceReset', { v: G.money(S.credit) }));
+  };
   Game.applySettings = () => {
     AudioEngine.setVolume(G.settings.volume);
     AudioEngine.setSfx(G.settings.sfx);
@@ -441,6 +534,50 @@
     }
     G.Q.applySetting();
     setPace();
+  };
+
+  // ---------------- errors ----------------
+  // a blocking card with the RGS's reason; `fatal` offers only a reload
+  function showError(msg, fatal) {
+    S.auto = 0;
+    G.UI.showError(fatal ? T('errTitle') : T('errTitle'), msg, fatal);
+  }
+  Game.showError = showError;
+
+  // ---------------- unfinished round (resume) ----------------
+  // the RGS still has a round open from last time: play it out at its own bet, then close it
+  async function resume(active) {
+    const amount = Math.round(+active.amount) || G.betMicro();
+    let k = G.BET_MICRO.indexOf(amount);
+    if (k < 0) { G.BET_MICRO.push(amount); G.BET_MICRO.sort((a, b) => a - b); G.BET_STEPS = G.BET_MICRO.map(v => v / 1e6); k = G.BET_MICRO.indexOf(amount); }
+    S.betIndex = k;
+    const mode = String(active.mode || 'base').toLowerCase();
+    S.ante = mode === 'ante';
+    S.busy = true;
+    say(T('msgResume'));
+    const src = roundSource(active);
+    try { await present(src, mode === 'bonus'); }
+    catch (e) { console.error(e); showError(T('errState')); }
+    try { await closeRound(Object.assign({}, active, { active: true })); } catch (e) { return; }
+    S.busy = false; S.slam = false; setPace();
+    say(T('msgRoundDone'));
+  }
+
+  // ---------------- replay ----------------
+  let replayData = null;
+  Game.startReplay = async () => {
+    if (S.busy || !replayData) return;
+    G.UI.closeAll();
+    // a fresh board and fresh counters every time
+    Object.assign(S, { inFS: false, fsLeft: 0, fsPlayed: 0, fsTotal: 0, fsAward: 0, persistent: 0, fsMilestone: 0, roundWin: 0,
+      winDisplay: 0, tumbleWin: 0, tumbleShown: 0, spinMult: 0, moodTarget: 0 });
+    AudioEngine.musicMode('base');
+    S.busy = true;
+    const mode = R.replay.mode;
+    try { await present(R.eventSource(replayData.events), mode === 'bonus'); }
+    catch (e) { console.error(e); showError(T('errState')); }
+    S.busy = false; S.slam = false; setPace();
+    G.UI.showReplay(replayData, S.roundWin);
   };
 
   // re-derive a past spin from a revealed server seed
@@ -521,11 +658,19 @@
   window.addEventListener('pointerup', () => { G.pressId = null; });
 
   document.addEventListener('keydown', e => {
-    if (!S.started) return;
-    if (G.UI.isOpen()) { if (e.key === 'Escape') G.UI.closeAll(); return; }
-    if (e.target && /INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName) && e.code !== 'Escape') return;
+    // the splash: Space or Enter presses PLAY
+    if (!S.started) {
+      const play = document.getElementById('playBtn');
+      if ((e.code === 'Space' || e.code === 'Enter') && play && !play.disabled && document.getElementById('splash').classList.contains('show')) { e.preventDefault(); play.click(); }
+      return;
+    }
+    if (G.UI.isOpen()) { if (e.key === 'Escape' && !G.UI.isBlocking()) G.UI.closeAll(); return; }
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) && e.code !== 'Escape') return;
     switch (e.code) {
-      case 'Space': case 'Enter': e.preventDefault(); if (!e.repeat) Game.spinPressed(); break;
+      case 'Space': case 'Enter':
+        e.preventDefault();
+        if (e.code === 'Space' && !G.allow('space') && !S.busy) break;
+        if (!e.repeat) Game.spinPressed(); break;
       case 'ArrowUp': e.preventDefault(); Game.bet(1); break;
       case 'ArrowDown': e.preventDefault(); Game.bet(-1); break;
       case 'KeyT': Game.toggleTurbo(); break;
@@ -594,13 +739,13 @@
     const z = 1 + cam.zoom + cam.push;
     ctx.translate(cam.ox + tx * 7 + zc.x, cam.oy + ty * 5 + zc.y); ctx.scale(z, z); ctx.translate(-zc.x, -zc.y);
     G.worldInv = ctx.getTransform().inverse();
-    G.Seb.draw(ctx);
     B.drawBack(ctx);
     B.drawCells(ctx, dt);
     FX.draw(ctx, 0);
     FX.drawBolts(ctx, 0);
     B.drawFront(ctx);
     H.drawLogo(ctx);
+    G.Seb.draw(ctx);               // in front of the board: his raised gun reaches over its edge
     H.drawLeft(ctx);
     H.drawPlaque(ctx);
     H.drawHint(ctx);
@@ -620,7 +765,7 @@
     G.Stats.draw(ctx);
     if (G.clock.paused && S.started) {
       ctx.fillStyle = 'rgba(6,2,16,.6)'; ctx.fillRect(0, 0, W, Hh);
-      G.goldText(ctx, 'PAUSED', W / 2, Hh / 2, Math.min(W, Hh) * 0.08);
+      G.goldText(ctx, T('msgPaused'), W / 2, Hh / 2, Math.min(W, Hh) * 0.08);
     }
   }
 
@@ -628,7 +773,8 @@
   // Only over https (or localhost): file:// can't use service workers, and the
   // manifest link is added here so opening the file from disk logs no errors.
   (function registerPwa() {
-    if (!/^https?:$/.test(location.protocol) || /[?&]nosw\b/.test(location.search)) return;
+    // the demo only: played through Stake or replaying, nothing is installed or cached
+    if (G.mode !== 'demo' || !/^https?:$/.test(location.protocol) || /[?&]nosw\b/.test(location.search)) return;
     const link = document.createElement('link'); link.rel = 'manifest'; link.href = 'manifest.json';
     document.head.appendChild(link);
     const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -649,8 +795,19 @@
       document.fonts.load(`800 20px Outfit`), document.fonts.load(`700 20px Outfit`), document.fonts.load(`500 20px Outfit`),
     ]).catch(() => {}).then(() => { pFonts = 1; show(); }) : Promise.resolve();
     const t0 = performance.now();
+    // Stake: sign in to the RGS (or fetch the replayed round) while everything loads
+    const rgs = G.mode === 'rgs' ? R.authenticate() : G.mode === 'replay' ? R.fetchReplay() : Promise.resolve(null);
+    rgs.catch(() => {});
     await Promise.all([fonts, B.loadAssets(p => { pAssets = p; show(); })]);
     await window.PREROLL;                 // the "Only on Stake" sting plays first
+    let rgsData = null, rgsErr = null;
+    try { rgsData = await rgs; } catch (e) { rgsErr = e; }
+    if (G.mode === 'replay' && rgsData) {
+      replayData = rgsData;
+      const k = G.BET_STEPS.indexOf(R.replay.amount / 1e6);
+      if (k >= 0) S.betIndex = k; else { G.BET_STEPS = [R.replay.amount / 1e6]; S.betIndex = 0; }
+      S.ante = R.replay.mode === 'ante';
+    }
     G.onLayout();
     B.setBoard(E.newBoard(Math.random, E.CONFIG.pScatterBase));
     G.UI.init();
@@ -659,6 +816,8 @@
     const wait = 900 - (performance.now() - t0);
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
     document.getElementById('loader').classList.add('gone');
+    // the RGS couldn't be reached: say so, and nothing else starts
+    if (rgsErr) { G.UI.showError(T('errStartTitle'), R.message(rgsErr), true); return; }
     const splash = document.getElementById('splash');
     splash.classList.add('show');
     document.getElementById('playBtn').addEventListener('click', () => {
@@ -669,8 +828,10 @@
       AudioEngine.play('whoosh');
       splash.classList.add('leaving');
       setTimeout(() => { splash.style.display = 'none'; }, 650);
-      say('PLACE YOUR BET!');
       G.canvas.focus();
+      if (G.mode === 'rgs' && R.active) G.UI.showResume(Math.round(+R.active.amount) / 1e6 || G.baseBet(), () => resume(R.active));
+      else if (G.mode === 'replay') G.UI.showReplay(replayData, null);
+      else say(T('idle'));
     }, { once: true });
   }
   boot();

@@ -22,7 +22,8 @@
     green: 'assets/symbols/green.png', blue: 'assets/symbols/blue.png', gold: 'assets/symbols/gold.png',
     scatter: 'assets/symbols/scatter.png',
   };
-  const SEB_IMAGE = 'assets/sebastian.png';
+  // Sebastian's two clips as sprite sheets (frame data: js/seb-frames.js)
+  const SEB_SHEETS = { idle: 'assets/sebastian/idle.webp', shoot: 'assets/sebastian/shoot.webp' };
 
   const SPR = 200, SHINE = 120, SHINE_FRAMES = 10;
   B.spr = {}; B.glow = {}; B.lit = {}; B.shine = {};
@@ -90,41 +91,11 @@
       B.shine[id] = shineFrames(B.spr[id]);
       tick();
     }));
-    const seb = await loadImg(SEB_IMAGE);
-    if (seb) B.seb = cropToAlpha(seb);
+    const [idle, shoot] = await Promise.all([loadImg(SEB_SHEETS.idle), loadImg(SEB_SHEETS.shoot)]);
+    if (idle && shoot && window.SEB_FRAMES) B.seb = { idle, shoot };
     tick();
     buildOrbSprites();
   };
-
-  // trim transparent margins so the figure scales by its real height
-  function cropToAlpha(img) {
-    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-    const x = c.getContext('2d'); x.drawImage(img, 0, 0);
-    let d;
-    const plain = { img, c: null, w: img.width, h: img.height, tip: [0.05, 0.82], ox: 0, oy: 0, srcW: img.width, srcH: img.height };
-    try { d = x.getImageData(0, 0, c.width, c.height).data; } catch (e) { return plain; }   // file:// taints the canvas
-    let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
-    for (let y = 0; y < c.height; y++) for (let xx = 0; xx < c.width; xx++) {
-      if (d[(y * c.width + xx) * 4 + 3] > 40) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-    }
-    if (x1 <= x0) return plain;
-    const w = x1 - x0 + 1, h = y1 - y0 + 1;
-    const o = document.createElement('canvas'); o.width = w; o.height = h;
-    o.getContext('2d').drawImage(c, x0, y0, w, h, 0, 0, w, h);
-    // find the left-most opaque pixel = muzzle of the shotgun (bolts fire from it)
-    let tip = [0, 0.8];
-    for (let xx = x0; xx <= x1 && !tip.found; xx++) for (let y = y0; y <= y1; y++) {
-      if (d[(y * c.width + xx) * 4 + 3] > 120) { tip = [(xx - x0) / w, (y - y0) / h]; tip.found = true; break; }
-    }
-    return { img: o, w, h, tip, ox: x0, oy: y0, srcW: img.width, srcH: img.height, glowB: halo2(o, '#7fd4ff'), glowF: halo2(o, '#ffc04a') };
-  }
-  function halo2(src, color) {
-    const pad = 40, c = document.createElement('canvas'); c.width = src.width + pad * 2; c.height = src.height + pad * 2;
-    const x = c.getContext('2d'), off = c.width * 2;
-    x.shadowColor = color; x.shadowBlur = 28; x.shadowOffsetX = off;
-    x.drawImage(src, pad - off, pad); x.drawImage(src, pad - off, pad);
-    return { c, pad };
-  }
 
   // ---------------- orb sprites (one per value tier) ----------------
   const orbSpr = [];

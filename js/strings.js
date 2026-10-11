@@ -1,0 +1,122 @@
+/* Thunder Hunter Sebastian — player-facing wording.
+ *
+ * Stake's social casino (stake.us) may not use gambling words such as bet,
+ * buy, credit, stake, pay or paytable. Every string the player can see that
+ * would otherwise contain one comes from here: [normal, social]. A single
+ * entry is the same in both. Social mode is on with ?social=true, a social
+ * currency (XSC/XGC/XEC) or the RGS's jurisdiction.socialCasino flag.
+ *
+ * GOS_STR.RESTRICTED is the list the tests scan every visible string for in
+ * social mode.
+ */
+window.GOS_STR = (() => {
+  'use strict';
+  const S = {
+    title: 'Thunder Hunter Sebastian',
+    titleTop: 'THUNDER HUNTER', titleMain: 'SEBASTIAN',
+    // canvas HUD
+    buy: ['BUY', 'GET'],
+    freeSpins: 'FREE SPINS',
+    bet: ['BET', 'PLAY'],
+    balance: 'BALANCE',
+    doubleChance: 'DOUBLE CHANCE',
+    doubleChanceSub: 'MORE FREE SPINS',
+    antePlus: ['+25% BET', '+25% PLAY'],
+    multiplier: 'MULTIPLIER', totalMulti: 'TOTAL MULTI',
+    winUpTo: 'WIN UP TO 5,000×',
+    tumbleWin: 'TUMBLE WIN',
+    freeSpinOf: 'FREE SPINS {a} / {b}',
+    win: 'WIN', featureWin: 'FREE SPINS WIN',
+    fsLeft: 'FREE SPINS · {n} LEFT',
+    goodLuck: 'GOOD LUCK!',
+    idle: ['PLACE YOUR BET!', 'PRESS SPIN TO PLAY!'],
+    autoplay: 'AUTOPLAY', auto: 'AUTO', turbo: 'TURBO', stop: 'STOP', free: 'FREE', on: 'ON', off: 'OFF',
+    replay: 'REPLAY',
+    // game messages
+    msgAutoStopped: 'AUTOPLAY STOPPED',
+    msgAutoLow: 'AUTOPLAY STOPPED — BALANCE TOO LOW',
+    msgAnteFirst: ['TURN OFF DOUBLE CHANCE TO BUY FREE SPINS', 'TURN OFF DOUBLE CHANCE TO GET FREE SPINS'],
+    msgAnteOn: ['DOUBLE CHANCE ON · +25% BET', 'DOUBLE CHANCE ON · +25% PLAY AMOUNT'],
+    msgAnteOff: 'DOUBLE CHANCE OFF',
+    msgBet: ['BET {v}', 'PLAY AMOUNT {v}'],
+    msgFreeSpin: 'FREE SPIN {a} OF {b}',
+    msgFeatureDone: 'FREE SPINS WIN {v}',
+    msgNear: 'SO CLOSE — ONE MORE SCATTER!',
+    msgRetrigger: 'RETRIGGER?', msgOneMore: 'ONE MORE SCATTER…',
+    msgTurboOn: 'TURBO ON', msgTurboOff: 'TURBO OFF',
+    msgBalanceReset: 'BALANCE RESET TO {v}',
+    msgTooLow: 'BALANCE TOO LOW',
+    msgBuyLocked: ['FREE SPINS CAN’T BE BOUGHT RIGHT NOW', 'FREE SPINS AREN’T AVAILABLE RIGHT NOW'],
+    msgResume: 'FINISHING YOUR LAST ROUND',
+    msgRoundDone: 'ROUND COMPLETE',
+    msgPaused: 'PAUSED',
+    // overlays
+    xBet: '×',
+    maxWin: 'MAX WIN', maxReached: '{x} REACHED',
+    fsAwarded: 'FREE SPINS', fsMore: '+{n} FREE SPINS', fsRetrigger: 'RETRIGGER!',
+    fsComplete: 'FEATURE COMPLETE', youWon: 'YOU WON', inSpins: 'IN {n} FREE SPINS',
+    tapContinue: 'TAP TO CONTINUE', tapSkip: 'TAP TO SKIP', tapStart: 'TAP TO START',
+    // DOM
+    playBtn: 'PLAY',
+    fineDemo: ['Demo credits only · Not real-money gambling · Sound on', 'Demo coins only · For fun · Sound on'],
+    fineLive: 'Sound on',
+    buyTitle: ['Buy free spins', 'Get free spins'],
+    buyLead: ['Buy <b>15 free spins</b> for', 'Get <b>15 free spins</b> for'],
+    buyConfirm: ['Buy', 'Confirm'],
+    lowTitle: 'Balance too low',
+    lowDemo: ['Balance: <b>{v}</b>. Lower the bet, or reset the demo balance.', 'Balance: <b>{v}</b>. Lower the play amount, or reset the demo balance.'],
+    lowLive: ['Balance: <b>{v}</b>. Lower the bet to keep playing.', 'Balance: <b>{v}</b>. Lower the play amount to keep playing.'],
+    menuRules: ['How to play & paytable', 'How to play & symbol wins'],
+    // Stake RGS
+    errTitle: 'Something went wrong',
+    errStartTitle: 'Can’t start the game',
+    errRetry: 'Try again', errReload: 'Reload', errClose: 'Close',
+    errIPB: ['Your balance is too low for this bet.', 'Your balance is too low for this play.'],
+    errGLE: ['You have reached a gambling limit on your account.', 'You have reached a play limit on your account.'],
+    errSession: 'Your session has expired. Please reload the game.',
+    errLoc: 'This game isn’t available in your location.',
+    errVal: 'The game server rejected the request. Please reload the game.',
+    errMaint: 'The game server is under maintenance. Please try again later.',
+    errNet: 'Can’t reach the game server. Check your connection and try again.',
+    errNoRgs: 'The game was opened without a game server address.',
+    errState: 'This round couldn’t be shown. It has been settled; your balance is up to date.',
+    errGen: 'The game server had a problem. Please try again.',
+    errEndRound: 'Your last round couldn’t be finished. Reload the game to complete it.',
+    resumeTitle: 'Unfinished round',
+    resumeLead: ['Your last round didn’t finish. It plays out now at its original bet of <b>{v}</b>.', 'Your last round didn’t finish. It plays out now at its original play amount of <b>{v}</b>.'],
+    resumeGo: 'Continue',
+    replayTitle: 'Replay',
+    replayBet: ['Bet', 'Play amount'], replayMode: 'Mode', replayCost: 'Cost', replayWin: 'Win', replayTotal: 'Total win',
+    replayPlay: 'Play replay', replayAgain: 'Replay again',
+    replayLoading: 'Loading the round…',
+    modeBase: 'Base game', modeAnte: 'Double chance', modeBonus: ['Buy free spins', 'Get free spins'],
+    canvasLabel: ['Thunder Hunter Sebastian slot game. Space to spin, arrow keys change the bet, T toggles turbo, I opens the rules.',
+      'Thunder Hunter Sebastian game. Space to spin, arrow keys change the play amount, T toggles turbo, I opens the rules.'],
+  };
+  const RESTRICTED = ['bet', 'bets', 'betting', 'buy', 'buys', 'bought', 'purchase', 'credit', 'credits', 'stake', 'staked',
+    'wager', 'wagered', 'wagering', 'paytable', 'pay', 'pays', 'paid', 'payout', 'money', 'cash', 'gamble', 'gambling',
+    'deposit', 'withdraw', 'casino', 'win feature'];
+
+  const q = new URLSearchParams(location.search);
+  const socialCurrency = c => /^(XSC|XGC|XEC)$/i.test(c || '');
+  let social = q.get('social') === 'true' || socialCurrency(q.get('currency'));
+
+  function T(key, vars) {
+    const v = S[key];
+    if (v == null) return key;
+    let s = Array.isArray(v) ? v[social ? 1 : 0] : v;
+    if (vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m));
+    return s;
+  }
+  // static HTML: elements carry data-t="key" (text) or data-th="key" (HTML), data-ta="key" (aria-label)
+  function apply(root) {
+    (root || document).querySelectorAll('[data-t]').forEach(el => { el.textContent = T(el.dataset.t); });
+    (root || document).querySelectorAll('[data-th]').forEach(el => { el.innerHTML = T(el.dataset.th); });
+    (root || document).querySelectorAll('[data-ta]').forEach(el => { el.setAttribute('aria-label', T(el.dataset.ta)); });
+  }
+  return {
+    T, apply, RESTRICTED, socialCurrency,
+    get social() { return social; },
+    setSocial(on) { social = !!on; apply(); document.documentElement.classList.toggle('social', social); },
+  };
+})();

@@ -1,26 +1,32 @@
-/* Gates of Sebastian — service worker (offline play, installable).
+/* Thunder Hunter Sebastian — service worker (offline play, installable).
+ *
+ * The demo only: played through Stake or replaying, game.js never registers it.
  *
  * Scope is this folder, so it also works when the game is served from a
- * sub-path (e.g. fiskce.com/gatesofsebastianv8/). Cache Storage is shared by
- * the whole origin, so this worker only ever touches caches named 'gos8-*'.
+ * sub-path (e.g. fiskce.com/gatesofsebastianv9/). Cache Storage is shared by
+ * the whole origin, so this worker only ever touches caches named 'gos9-*'.
  *  - code (html/js/css/json): network first, cache as fallback -> online
  *    players always get the latest build
  *  - art, fonts, sounds: cache first
  * Bump VERSION on every release.
  */
-const VERSION = 'gos8-core-2';
-const MEDIA = 'gos8-media';
+const VERSION = 'gos9-core-1';
+const MEDIA = 'gos9-media';
 const CORE = [
   './',
   'manifest.json',
   'css/style.css',
   'js/preroll.js',
+  'js/strings.js',
+  'js/math-info.js',
+  'js/seb-frames.js',
   'js/engine.js',
   'js/fair.js',
   'js/symbols.js',
   'js/audio.js',
   'js/music.js',
   'js/core.js',
+  'js/rgs.js',
   'js/fx.js',
   'js/scene.js',
   'js/board.js',
@@ -35,7 +41,9 @@ const CORE = [
   'assets/fonts/outfit-latin-500-normal.woff2',
   'assets/fonts/outfit-latin-700-normal.woff2',
   'assets/fonts/outfit-latin-800-normal.woff2',
-  'assets/sebastian.png',
+  'assets/sebastian/idle.webp',
+  'assets/sebastian/shoot.webp',
+  'assets/sebastian/splash.webp',
   'assets/symbols/blue.png',
   'assets/symbols/chalice.png',
   'assets/symbols/crown.png',
@@ -47,6 +55,8 @@ const CORE = [
   'assets/symbols/ring.png',
   'assets/symbols/scatter.png',
   'assets/icons/apple-touch-180.png',
+  'assets/icons/favicon-16.png',
+  'assets/icons/favicon-32.png',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',
   'assets/icons/icon-maskable-512.png',
@@ -65,7 +75,7 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(k => k.startsWith('gos8-') && k !== VERSION && k !== MEDIA).map(k => caches.delete(k))))
+    .then(keys => Promise.all(keys.filter(k => k.startsWith('gos9-') && k !== VERSION && k !== MEDIA).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 

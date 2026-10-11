@@ -206,6 +206,32 @@ table.history { width: 100%; border-collapse: collapse; font-size: 13px; }
   .fine { margin-top: 8px; }
 }
 
+/* very short screens (Stake checks 400x225): the splash fits without scrolling */
+@media (max-height: 420px) and (min-aspect-ratio: 1/1) {
+  #splash { overflow: hidden; align-items: center; padding: 6px 12px; }
+  .features { display: none; }
+  .splash-seb { height: 80vh; }
+  .presents { font-size: 10px; }
+  .title-sm { font-size: clamp(12px, 6.5vh, 22px); }
+  .title { font-size: clamp(22px, 14vh, 48px); }
+  .splash-copy h1 { margin: 2px 0 8px; }
+  .play-btn { padding: 8px 34px; font-size: 16px; }
+  .fine { font-size: 10px; margin-top: 6px; }
+  .card { padding: 12px 12px 10px; max-height: 94vh; }
+  .card h2 { font-size: 17px; margin-bottom: 6px; }
+}
+
+/* rules: modes with their RTP, the controls guide; the replay card */
+.facts.modes { grid-template-columns: 1fr; margin-bottom: 8px; }
+.facts.modes div { gap: 12px; align-items: baseline; }
+.facts.modes span { color: #ddd2f7; } .facts.modes span b { color: #fff; }
+.facts.modes > div > b { white-space: nowrap; }
+dl.controls { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13.5px; margin: 6px 0; }
+dl.controls dt { color: var(--gold-hi); font-weight: 700; white-space: nowrap; }
+dl.controls dd { color: #ddd2f7; margin: 0; line-height: 1.45; }
+@media (max-width: 480px) { dl.controls { grid-template-columns: 1fr; gap: 2px; } dl.controls dd { margin-bottom: 6px; } }
+.replay-facts { grid-template-columns: 1fr; margin: 4px 0 16px; text-align: left; }
+
 select { font: inherit; font-size: 14px; color: #fff; background: #0b0418; border: 1px solid #4a3a78; border-radius: 8px; padding: 6px 8px; }
 select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
 .stats-wrap { max-height: none; }

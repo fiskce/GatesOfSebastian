@@ -1,4 +1,4 @@
-/* Gates of Sebastian — "Only on Stake" preroll.
+/* Thunder Hunter Sebastian — "Only on Stake" preroll.
  *
  * Loaded right after the #preroll markup, before everything else, so the sting
  * is the first thing on screen. The game keeps loading behind it and only
@@ -15,7 +15,7 @@
  * A player who turned the sound off last time gets it muted with no prompt.
  *
  * It always hands over to the game: when the video ends, fails to load or
- * stalls.
+ * stalls. It doesn't play at all offline, for a bet replay or in social play.
  */
 (() => {
   'use strict';
@@ -77,8 +77,11 @@
   video.addEventListener('seeked', drawBack);
   video.addEventListener('play', startBackLoop);
 
-  // offline (e.g. launched from the home screen): the video isn't cached, so skip it at once
-  if (navigator.onLine === false) { end(); return; }
+  // offline (e.g. launched from the home screen): the video isn't cached, so skip it at once.
+  // Also skipped for a bet replay, and in social play, where "Stake" is a restricted word.
+  const q = new URLSearchParams(location.search);
+  const social = q.get('social') === 'true' || /^(XSC|XGC|XEC)$/i.test(q.get('currency') || '');
+  if (navigator.onLine === false || q.get('replay') === 'true' || social) { end(); return; }
   video.addEventListener('ended', end);
   video.addEventListener('error', end);              // the media element itself failed
   // a failing <source> just moves on to the next one; give up once every source has failed
@@ -100,7 +103,7 @@
   // respect a player who turned the sound off last time (the sting plays outside the game's mixer)
   let soundOff = false;
   try {
-    const d = JSON.parse(localStorage.getItem('gos8') || localStorage.getItem('gos7') || 'null'), st = d && d.settings;
+    const d = JSON.parse(localStorage.getItem('gos9') || localStorage.getItem('gos8') || localStorage.getItem('gos7') || 'null'), st = d && d.settings;
     if (st) {
       soundOff = (st.sfx === false && st.music === false) || st.volume === 0;
       if (typeof st.volume === 'number') video.volume = Math.max(0, Math.min(1, st.volume));

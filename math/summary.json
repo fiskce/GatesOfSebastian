@@ -1,0 +1,85 @@
+{
+  "generated": "2026-10-11T11:50:52.180Z",
+  "targetRtp": 96.5,
+  "scale": 1,
+  "workers": 4,
+  "featureCapRate": 0.0001242448673064817,
+  "modes": {
+    "base": {
+      "cost": 1,
+      "books": 95010,
+      "buckets": {
+        "0": 20000,
+        "basegame": 60000,
+        "freegame": 15000,
+        "wincap": 10
+      },
+      "probabilities": {
+        "0": 0.7413596490373467,
+        "basegame": 0.2549859513617047,
+        "freegame": 0.003653945560555022,
+        "wincap": 4.540403935047094e-7
+      },
+      "reweight": 0.9829603746783205,
+      "rtp": 96.5,
+      "hitRate": 0.261926,
+      "maxWinX": 5000,
+      "totalWeight": "987367509345390",
+      "rawBookBytes": 60188112,
+      "bytes": {
+        "books": 8928341,
+        "weights": 1930517
+      }
+    },
+    "ante": {
+      "cost": 1.25,
+      "books": 95006,
+      "buckets": {
+        "0": 20000,
+        "basegame": 60000,
+        "freegame": 15000,
+        "wincap": 6
+      },
+      "probabilities": {
+        "0": 0.7436927008545292,
+        "basegame": 0.25003137959773863,
+        "freegame": 0.006275139796940699,
+        "wincap": 7.797507914341336e-7
+      },
+      "reweight": 0.9716262858589322,
+      "rtp": 96.499999,
+      "hitRate": 0.261796,
+      "maxWinX": 5000,
+      "totalWeight": "978898675905790",
+      "rawBookBytes": 60045322,
+      "bytes": {
+        "books": 8902962,
+        "weights": 1930051
+      }
+    },
+    "bonus": {
+      "cost": 100,
+      "books": 30020,
+      "buckets": {
+        "0": 0,
+        "basegame": 0,
+        "freegame": 30000,
+        "wincap": 20
+      },
+      "probabilities": {
+        "freegame": 0.9998757551326936,
+        "wincap": 0.0001242448673064817
+      },
+      "reweight": 0.9885348743694532,
+      "rtp": 96.5,
+      "hitRate": 0.992722,
+      "maxWinX": 5000,
+      "totalWeight": "996020949334664",
+      "rawBookBytes": 73743988,
+      "bytes": {
+        "books": 12295448,
+        "weights": 679295
+      }
+    }
+  }
+}

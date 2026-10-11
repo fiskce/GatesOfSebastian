@@ -1,4 +1,4 @@
-/* Gates of Sebastian — HUD: side panels, logo, Sebastian, plaque, bottom bar.
+/* Thunder Hunter Sebastian — HUD: side panels, logo, Sebastian, plaque, bottom bar.
  * Everything is drawn on the canvas and registered as a hit region each frame
  * (G.button); input.js hit-tests the pointer against those regions.
  */
@@ -6,7 +6,7 @@
   'use strict';
   const G = window.GOS, FX = G.FX, B = G.Board, E = G.E;
   const H = G.HUD = {};
-  const S = G.S;
+  const S = G.S, T = G.T;
 
   // ---------------- buttons ----------------
   const anim = {};   // per-button smoothed hover/press values
@@ -79,12 +79,13 @@
     const big = Math.min(b.h * 0.5, b.w * 0.16);
     x.save();
     G.text(x, 'FISKCE PRESENTS', b.w / 2, b.h * 0.14, big * 0.26, '#e9d7ff', { weight: 700, display: true, shadow: 'rgba(0,0,0,.7)' });
-    G.goldText(x, 'GATES OF', b.w / 2, b.h * 0.36, big * 0.5, { maxW: b.w * 0.9, glow: 'rgba(255,150,40,.55)' });
-    G.goldText(x, 'SEBASTIAN', b.w / 2, b.h * 0.72, big, { maxW: b.w * 0.98, glow: 'rgba(255,150,40,.7)' });
+    G.goldText(x, T('titleTop'), b.w / 2, b.h * 0.36, big * 0.5, { maxW: b.w * 0.9, glow: 'rgba(255,150,40,.55)' });
+    G.goldText(x, T('titleMain'), b.w / 2, b.h * 0.72, big, { maxW: b.w * 0.98, glow: 'rgba(255,150,40,.7)' });
     x.restore();
     logoC = o.c;
   }
   H.drawLogo = ctx => {
+    if (G.L.noLogo) return;
     if (!logoC) buildLogo();
     const b = G.L.logo, t = G.clock.real;
     ctx.drawImage(logoC, b.x, b.y, b.w, b.h);
@@ -122,8 +123,11 @@
   H.drawLeft = ctx => {
     const L = G.L, P = L.portrait, rad = Math.min(16, L.buy.h * 0.18);
     // BUY FREE SPINS
-    const br = L.buy, buyOk = !S.busy && !S.inFS && !S.ante && S.credit >= G.buyCost();
-    const a = G.button('buy', br.x, br.y, br.w, br.h, () => G.Game.askBuy(), { disabled: !buyOk, label: 'Buy free spins' });
+    const br = L.buy;
+    if (!G.allow('buy')) { drawBetPanel(ctx, L, P, rad); drawWell(ctx); return; }
+    // pressable whenever no round is running: it says why when it can't (double chance on, balance too low)
+    const buyIdle = !S.busy && !S.inFS, buyOk = buyIdle && !S.ante && G.Game.canAfford('bonus');
+    const a = G.button('buy', br.x, br.y, br.w, br.h, () => G.Game.askBuy(), { disabled: !buyIdle, label: T('buyTitle') });
     ctx.save(); pressScale(ctx, br, a);
     ctx.globalAlpha = buyOk ? 1 : 0.5;
     panel(ctx, br, '#c4253b', '#5c0a18', '#f2c45a', rad);
@@ -136,45 +140,52 @@
       ctx.fillStyle = sg; ctx.fillRect(br.x, br.y, br.w, br.h); ctx.restore();
     }
     const fs = P ? Math.min(br.h * 0.22, br.w * 0.1) : Math.min(br.h * 0.16, br.w * 0.12);
-    G.text(ctx, 'BUY', br.x + br.w / 2, br.y + br.h * (P ? 0.24 : 0.24), fs * 0.9, '#ffe6b0', { weight: 800 });
-    G.goldText(ctx, 'FREE SPINS', br.x + br.w / 2, br.y + br.h * (P ? 0.5 : 0.48), fs * 1.15, { maxW: br.w * 0.88 });
+    G.text(ctx, T('buy'), br.x + br.w / 2, br.y + br.h * (P ? 0.24 : 0.24), fs * 0.9, '#ffe6b0', { weight: 800, maxW: br.w * 0.9 });
+    G.goldText(ctx, T('freeSpins'), br.x + br.w / 2, br.y + br.h * (P ? 0.5 : 0.48), fs * 1.15, { maxW: br.w * 0.88 });
     G.text(ctx, G.money(G.buyCost()), br.x + br.w / 2, br.y + br.h * (P ? 0.78 : 0.76), fs * 1.15, '#ffffff', { weight: 800, maxW: br.w * 0.9, shadow: 'rgba(0,0,0,.6)' });
     ctx.restore();
     hoverGlow(ctx, br, a, rad);
+    drawBetPanel(ctx, L, P, rad);
+    drawWell(ctx);
+  };
 
-    // BET + DOUBLE CHANCE (ante)
-    const bt = L.bet, anteOk = !S.busy && !S.inFS;
+  // BET + DOUBLE CHANCE (ante). BET is the bet level; the ante's extra 25% is shown on its own line.
+  function drawBetPanel(ctx, L, P, rad) {
+    const bt = L.bet, anteOk = !S.busy && !S.inFS && G.allow('ante');
     panel(ctx, bt, 'rgba(40,18,74,.92)', 'rgba(14,6,30,.95)', '#b8892e', rad);
     const fb = P ? Math.min(bt.h * 0.2, bt.w * 0.085) : Math.min(bt.h * 0.11, bt.w * 0.1);
+    if (G.mode === 'replay') {      // a replay shows its bet and nothing to change
+      G.text(ctx, T('replay'), bt.x + bt.w / 2, bt.y + bt.h * 0.3, fb * 1.1, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
+      G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.62, fb * 1.05, '#ffffff', { weight: 800, maxW: bt.w * 0.9 });
+      return;
+    }
     if (!P) {
-      G.text(ctx, 'BET', bt.x + bt.w / 2, bt.y + bt.h * 0.13, fb * 0.85, '#c9b6ee', { weight: 700 });
-      G.text(ctx, G.money(G.spinCost()), bt.x + bt.w / 2, bt.y + bt.h * 0.28, fb * 1.45, '#ffffff', { weight: 800, maxW: bt.w * 0.9 });
-      G.text(ctx, 'DOUBLE CHANCE', bt.x + bt.w / 2, bt.y + bt.h * 0.47, fb * 0.78, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
-      G.text(ctx, 'TO WIN FEATURE', bt.x + bt.w / 2, bt.y + bt.h * 0.57, fb * 0.66, '#c9b6ee', { weight: 700, maxW: bt.w * 0.9 });
+      G.text(ctx, T('bet'), bt.x + bt.w / 2, bt.y + bt.h * 0.13, fb * 0.85, '#c9b6ee', { weight: 700 });
+      G.text(ctx, G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.28, fb * 1.45, '#ffffff', { weight: 800, maxW: bt.w * 0.9 });
+      G.text(ctx, T('doubleChance'), bt.x + bt.w / 2, bt.y + bt.h * 0.47, fb * 0.78, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
+      G.text(ctx, T('doubleChanceSub'), bt.x + bt.w / 2, bt.y + bt.h * 0.57, fb * 0.66, '#c9b6ee', { weight: 700, maxW: bt.w * 0.9 });
     } else {
-      G.text(ctx, 'BET ' + G.money(G.spinCost()), bt.x + bt.w / 2, bt.y + bt.h * 0.24, fb * 1.15, '#ffffff', { weight: 800, maxW: bt.w * 0.92 });
-      G.text(ctx, 'DOUBLE CHANCE', bt.x + bt.w / 2, bt.y + bt.h * 0.5, fb * 0.8, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
+      G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.24, fb * 1.15, '#ffffff', { weight: 800, maxW: bt.w * 0.92 });
+      G.text(ctx, T('doubleChance'), bt.x + bt.w / 2, bt.y + bt.h * 0.5, fb * 0.8, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
     }
     // toggle switch
     const tw = Math.min(bt.w * 0.62, (P ? bt.h * 0.34 : bt.h * 0.2) * 2.6), th = tw / 2.6;
     const tx = bt.x + (bt.w - tw) / 2, ty = bt.y + bt.h * (P ? 0.64 : 0.66);
-    const ta = G.button('ante', tx - 6, ty - 6, tw + 12, th + 12, () => G.Game.toggleAnte(), { disabled: !anteOk, label: 'Double chance' });
+    const ta = G.button('ante', tx - 6, ty - 6, tw + 12, th + 12, () => G.Game.toggleAnte(), { disabled: !anteOk, label: T('doubleChance') });
     H.anteK = (H.anteK || 0) + ((S.ante ? 1 : 0) - (H.anteK || 0)) * 0.25;
     const k = H.anteK;
     ctx.save(); ctx.globalAlpha = anteOk ? 1 : 0.55;
     G.roundRect(ctx, tx, ty, tw, th, th / 2);
     ctx.fillStyle = k > 0.5 ? '#1f8a4c' : '#3a2350'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#f2c45a'; ctx.stroke();
-    G.text(ctx, S.ante ? 'ON' : 'OFF', tx + (S.ante ? tw * 0.32 : tw * 0.68), ty + th / 2, th * 0.48, '#ffffff', { weight: 800 });
+    G.text(ctx, S.ante ? T('on') : T('off'), tx + (S.ante ? tw * 0.32 : tw * 0.68), ty + th / 2, th * 0.48, '#ffffff', { weight: 800 });
     const kx = tx + th / 2 + k * (tw - th);
     const kg = ctx.createRadialGradient(kx - th * 0.15, ty + th * 0.35, 1, kx, ty + th / 2, th / 2);
     kg.addColorStop(0, '#fff7d6'); kg.addColorStop(1, '#d19a2a');
     ctx.fillStyle = kg; ctx.beginPath(); ctx.arc(kx, ty + th / 2, th / 2 - 2, 0, 7); ctx.fill();
     ctx.restore();
     if (ta.h > 0.02) { ctx.save(); ctx.globalAlpha = ta.h; ctx.shadowColor = '#ffd27a'; ctx.shadowBlur = 14; G.roundRect(ctx, tx, ty, tw, th, th / 2); ctx.strokeStyle = '#fff1c0'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
-    if (!P) G.text(ctx, '+25% STAKE', bt.x + bt.w / 2, Math.min(ty + th + fb * 0.95, bt.y + bt.h - fb * 0.7), fb * 0.62, '#9a86c8', { weight: 700 });
-
-    drawWell(ctx);
-  };
+    if (!P) G.text(ctx, S.ante ? T('antePlus') + ' · ' + G.money(G.spinCost()) : T('antePlus'), bt.x + bt.w / 2, Math.min(ty + th + fb * 0.95, bt.y + bt.h - fb * 0.7), fb * 0.62, S.ante ? '#ffd36b' : '#9a86c8', { weight: 700, maxW: bt.w * 0.92 });
+  }
 
   // the multiplier collector: orbs fly into it, its value slams into wins
   H.wellCenter = () => {
@@ -187,7 +198,7 @@
     const active = val > 0;
     const rad = Math.min(16, w.h * 0.18);
     panel(ctx, w, 'rgba(30,12,58,.92)', 'rgba(8,3,18,.96)', S.inFS ? '#ffd36b' : '#7a5a1e', rad);
-    const label = S.inFS ? 'TOTAL MULTI' : 'MULTIPLIER';
+    const label = S.inFS ? T('totalMulti') : T('multiplier');
     G.text(ctx, label, w.x + w.w / 2, w.y + w.h * (P ? 0.2 : 0.14), Math.min(w.w * 0.1, w.h * (P ? 0.17 : 0.09)), active ? '#ffd36b' : '#9a86c8', { weight: 800, maxW: w.w * 0.9 });
     const c = H.wellCenter(), R = Math.min(w.w * 0.36, w.h * (P ? 0.34 : 0.3));
     // socket
@@ -216,15 +227,18 @@
     ctx.restore();
   }
 
+  // the tumble win counts up toward the spin's total (or its multiplied total)
+  const tumblePlaces = () => G.countPlaces(S.countTo != null ? S.countTo : S.tumbleWin);
+
   // ---------------- top plaque ----------------
   H.drawPlaque = ctx => {
     const L = G.L, p = L.plaque, P = L.portrait;
     let line;
-    if (S.inFS) line = S.tumbleShown > 0 ? 'TUMBLE WIN ' + G.money(S.tumbleShown) : `FREE SPINS ${Math.min(S.fsPlayed, S.fsAward)} / ${S.fsAward}`;
-    else if (S.tumbleShown > 0) line = 'TUMBLE WIN ' + G.money(S.tumbleShown);
-    else line = 'WIN UP TO 5,000× BET';
-    const size = P ? Math.min(G.W * 0.045, 22) : G.clamp(L.reel.w * 0.032, 16, 30);
-    const maxW = P ? G.W * 0.56 : L.reel.w * 0.8;
+    if (S.inFS) line = S.tumbleShown > 0 ? T('tumbleWin') + ' ' + G.money(S.tumbleShown, tumblePlaces()) : T('freeSpinOf', { a: Math.min(S.fsPlayed, S.fsAward), b: S.fsAward });
+    else if (S.tumbleShown > 0) line = T('tumbleWin') + ' ' + G.money(S.tumbleShown, tumblePlaces());
+    else line = T('winUpTo');
+    const size = L.compact ? G.clamp(L.topH * 0.42, 9, 14) : P ? Math.min(G.W * 0.045, 22) : G.clamp(L.reel.w * 0.032, 16, 30);
+    const maxW = P ? G.W * 0.56 : L.compact ? L.reel.w * 1.2 : L.reel.w * 0.8;
     ctx.font = G.font(size, 900, true);
     const tw = Math.min(maxW, ctx.measureText(line).width) + size * 2.2, th = size * 1.75;
     const x = G.clamp(p.cx - tw / 2, 4, G.W - tw - 4), y = p.y - th / 2, cx = x + tw / 2;
@@ -250,7 +264,7 @@
     const lg = ctx.createLinearGradient(0, 0, W, 0);
     lg.addColorStop(0, 'rgba(232,181,74,0)'); lg.addColorStop(0.5, 'rgba(232,181,74,.9)'); lg.addColorStop(1, 'rgba(232,181,74,0)');
     ctx.fillStyle = lg; ctx.fillRect(0, bb.y, W, 1.5);
-    if (P) drawBottomPortrait(ctx, bb); else drawBottomLandscape(ctx, bb);
+    if (L.compact) drawBottomCompact(ctx, bb); else if (P) drawBottomPortrait(ctx, bb); else drawBottomLandscape(ctx, bb);
   };
 
   function iconButton(ctx, id, name, cx, cy, s, onClick, opts) {
@@ -278,7 +292,7 @@
   }
   function spinButton(ctx, cx, cy, R) {
     const canSpin = !S.busy && !S.inFS && S.auto <= 0;
-    const a = G.button('spin', cx - R, cy - R, R * 2, R * 2, () => G.Game.spinPressed(), { shape: 'circle', label: 'Spin' });
+    const a = G.button('spin', cx - R, cy - R, R * 2, R * 2, () => G.Game.spinPressed(), { shape: 'circle', label: G.mode === 'replay' ? T('replayPlay') : 'Spin' });
     const t = G.clock.real;
     const rr = R * (1 - a.p * 0.06 + a.h * 0.03);
     ctx.save();
@@ -298,9 +312,9 @@
     ctx.fillStyle = face; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.86, 0, 7); ctx.fill();
     if (S.auto > 0 || S.inFS) {
       const n = S.inFS ? S.fsLeft : S.auto;
-      G.text(ctx, S.inFS ? 'FREE' : 'AUTO', cx, cy - rr * 0.3, rr * 0.24, '#ffe9b0', { weight: 800 });
+      G.text(ctx, S.inFS ? T('free') : T('auto'), cx, cy - rr * 0.3, rr * 0.24, '#ffe9b0', { weight: 800 });
       G.goldText(ctx, n === Infinity ? '∞' : String(n), cx, cy + rr * 0.12, rr * 0.55, { display: false, weight: 800 });
-      if (!S.inFS) G.text(ctx, 'STOP', cx, cy + rr * 0.55, rr * 0.2, '#ffffff', { weight: 800 });
+      if (!S.inFS) G.text(ctx, T('stop'), cx, cy + rr * 0.55, rr * 0.2, '#ffffff', { weight: 800 });
     } else {
       // two curved arrows, spinning while the reels are busy
       const rot = S.busy ? G.clock.real * 9 : Math.sin(t * 1.3) * 0.08;
@@ -316,22 +330,22 @@
     ctx.restore();
   }
 
-  function moneyBlock(ctx, label, value, x, y, size, align, color) {
-    G.text(ctx, label, x, y - size * 0.55, size * 0.62, '#a996d6', { weight: 700, align });
-    G.text(ctx, value, x, y + size * 0.42, size, color || '#ffffff', { weight: 800, align });
+  function moneyBlock(ctx, label, value, x, y, size, align, color, maxW) {
+    G.text(ctx, label, x, y - size * 0.55, size * 0.62, '#a996d6', { weight: 700, align, maxW });
+    G.text(ctx, value, x, y + size * 0.42, size, color || '#ffffff', { weight: 800, align, maxW });
   }
 
   function centerMessage(ctx, x, y, maxW, size) {
     let msg = S.message, col = '#ffe9b0';
     const age = G.clock.real - S.messageT;
     if (!msg || age > 3) {
-      if (S.busy && S.tumbleShown > 0) { msg = 'WIN ' + G.money(S.tumbleShown); col = '#ffd84a'; }
-      else if (S.winDisplay > 0) { msg = 'WIN ' + G.money(S.winDisplay); col = '#ffd84a'; }
-      else if (S.inFS) msg = S.fsTotal > 0 ? 'FEATURE WIN ' + G.money(S.fsTotal) : 'FREE SPINS · ' + S.fsLeft + ' LEFT';
-      else if (S.busy) msg = 'GOOD LUCK!';
-      else msg = 'PLACE YOUR BET!';
+      if (S.busy && S.tumbleShown > 0) { msg = T('win') + ' ' + G.money(S.tumbleShown, tumblePlaces()); col = '#ffd84a'; }
+      else if (S.winDisplay > 0) { msg = T('win') + ' ' + G.money(S.winDisplay); col = '#ffd84a'; }
+      else if (S.inFS) msg = S.fsTotal > 0 ? T('featureWin') + ' ' + G.money(S.fsTotal) : T('fsLeft', { n: S.fsLeft });
+      else if (S.busy) msg = T('goodLuck');
+      else msg = G.mode === 'replay' ? T('replay') : T('idle');
     }
-    if (msg.startsWith('WIN ')) G.goldText(ctx, msg, x, y, size * 1.25, { maxW, display: false, weight: 800 });
+    if (msg.startsWith(T('win') + ' ')) G.goldText(ctx, msg, x, y, size * 1.25, { maxW, display: false, weight: 800 });
     else G.text(ctx, msg, x, y, size, col, { weight: 800, maxW, display: true });
   }
 
@@ -343,10 +357,10 @@
       ['info', 'info', () => G.UI.open('info'), 'Game info'],
       ['settings', 'settings', () => G.UI.open('settings'), 'Settings'],
       ['sound', G.settings.sfx || G.settings.music ? 'sound' : 'mute', () => G.Game.toggleSound(), 'Sound'],
-      ['history', 'history', () => G.UI.open('fair'), 'History & fairness'],
-      ['stats', 'trophy', () => G.UI.open('stats'), 'Stats & achievements'],
-      ['full', 'full', () => G.UI.fullscreen(), 'Fullscreen'],
-    ];
+      G.allow('fair') && ['history', 'history', () => G.UI.open('fair'), 'History & fairness'],
+      G.allow('stats') && ['stats', 'trophy', () => G.UI.open('stats'), 'Stats & achievements'],
+      G.allow('fullscreen') && ['full', 'full', () => G.UI.fullscreen(), 'Fullscreen'],
+    ].filter(Boolean);
     icons.forEach(([id, name, fn, label]) => { iconButton(ctx, id, name, x, cy - bb.h * 0.08, isz, fn, { label }); x += ig; });
     G.text(ctx, 'FISKCE.COM', pad, bb.y + bb.h - 9, Math.min(11, bb.h * 0.13), 'rgba(233,196,106,.6)', { weight: 700, align: 'left' });
     // right cluster: turbo, -, SPIN, +, auto
@@ -358,26 +372,29 @@
     const minusX = rx - r; rx = minusX - r - pad * 0.8;
     const turboX = rx - r; rx = turboX - r - pad;
     const by = cy - bb.h * 0.06, sy = bb.y + bb.h * 0.42 - R * 0.18;
-    const betLock = S.busy || S.inFS || S.auto > 0;
-    roundBtn(ctx, 'betDown', 'minus', minusX, by, r, () => G.Game.bet(-1), betLock || S.betIndex === 0, 'Lower bet');
-    roundBtn(ctx, 'betUp', 'plus', plusX, by, r, () => G.Game.bet(1), betLock || S.betIndex === G.BET_STEPS.length - 1, 'Raise bet');
-    iconButton(ctx, 'turbo', 'bolt', turboX, by, r * 1.1, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
-    iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, by, r * 1.1, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
-    G.text(ctx, 'TURBO', turboX, by + r * 1.25, Math.min(10, bb.h * 0.12), '#a996d6', { weight: 700 });
-    G.text(ctx, 'AUTO', autoX, by + r * 1.25, Math.min(10, bb.h * 0.12), '#a996d6', { weight: 700 });
+    betButtons(ctx, minusX, plusX, by, r);
+    if (G.allow('turbo')) {
+      iconButton(ctx, 'turbo', 'bolt', turboX, by, r * 1.1, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
+      G.text(ctx, T('turbo'), turboX, by + r * 1.25, Math.min(10, bb.h * 0.12), '#a996d6', { weight: 700 });
+    }
+    if (G.allow('auto')) {
+      iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, by, r * 1.1, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
+      G.text(ctx, T('auto'), autoX, by + r * 1.25, Math.min(10, bb.h * 0.12), '#a996d6', { weight: 700 });
+    }
     spinButton(ctx, spinX, sy, R);
     H.autoAnchor = { x: autoX, y: bb.y };
     // credit / bet and the centre message
     const left = x + pad * 0.2, right = rx;
     const fsz = G.clamp(bb.h * 0.2, 12, 20);
     const avail = right - left;
+    const colW = Math.max(140, fsz * 8.5);
     if (avail > 260) {
-      moneyBlock(ctx, 'CREDIT', G.money(S.credit), left, cy - bb.h * 0.04, fsz, 'left');
-      moneyBlock(ctx, 'BET', G.money(G.spinCost()), left + Math.max(140, fsz * 8.5), cy - bb.h * 0.04, fsz, 'left', '#ffd36b');
-      const mx = left + Math.max(140, fsz * 8.5) + fsz * 6;
+      let mx = left;
+      if (G.allow('balance')) { moneyBlock(ctx, T('balance'), G.money(S.credit), mx, cy - bb.h * 0.04, fsz, 'left', null, colW - 10); mx += colW; }
+      moneyBlock(ctx, T('bet'), G.money(G.baseBet()), mx, cy - bb.h * 0.04, fsz, 'left', '#ffd36b', fsz * 6); mx += fsz * 6;
       centerMessage(ctx, (mx + right) / 2, cy - bb.h * 0.04, right - mx - 10, fsz * 0.95);
-    } else {
-      moneyBlock(ctx, 'CREDIT', G.money(S.credit), left, cy - bb.h * 0.04, fsz * 0.9, 'left');
+    } else if (G.allow('balance')) {
+      moneyBlock(ctx, T('balance'), G.money(S.credit), left, cy - bb.h * 0.04, fsz * 0.9, 'left', null, avail - 10);
     }
     drawAutoMenu(ctx);
   }
@@ -386,20 +403,54 @@
     const W = G.W, pad = G.L.pad * 1.2;
     const row1 = bb.y + bb.h * 0.2, row2 = bb.y + bb.h * 0.64;
     const fsz = G.clamp(bb.h * 0.13, 11, 16);
-    moneyBlock(ctx, 'CREDIT', G.money(S.credit), pad, row1, fsz, 'left');
-    moneyBlock(ctx, 'BET', G.money(G.spinCost()), W - pad, row1, fsz, 'right', '#ffd36b');
+    if (G.allow('balance')) moneyBlock(ctx, T('balance'), G.money(S.credit), pad, row1, fsz, 'left', null, W * 0.28);
+    moneyBlock(ctx, T('bet'), G.money(G.baseBet()), W - pad, row1, fsz, 'right', '#ffd36b', W * 0.26);
     centerMessage(ctx, W / 2, row1, W * 0.4, fsz * 0.95);
     const R = G.clamp(Math.min(bb.h * 0.36, W * 0.12), 30, 54), r = R * 0.52;
     const isz = G.clamp(r * 0.95, 16, 26);
-    const betLock = S.busy || S.inFS || S.auto > 0;
     spinButton(ctx, W / 2, row2, R);
-    roundBtn(ctx, 'betDown', 'minus', W / 2 - R - r - pad * 0.7, row2, r, () => G.Game.bet(-1), betLock || S.betIndex === 0, 'Lower bet');
-    roundBtn(ctx, 'betUp', 'plus', W / 2 + R + r + pad * 0.7, row2, r, () => G.Game.bet(1), betLock || S.betIndex === G.BET_STEPS.length - 1, 'Raise bet');
+    betButtons(ctx, W / 2 - R - r - pad * 0.7, W / 2 + R + r + pad * 0.7, row2, r);
     iconButton(ctx, 'menu', 'menu', pad + isz * 0.7, row2, isz, () => G.UI.open('menu'), { label: 'Menu' });
     iconButton(ctx, 'sound', G.settings.sfx || G.settings.music ? 'sound' : 'mute', pad + isz * 2.4, row2, isz, () => G.Game.toggleSound(), { label: 'Sound' });
-    iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', W - pad - isz * 0.7, row2, isz, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
-    iconButton(ctx, 'turbo', 'bolt', W - pad - isz * 2.4, row2, isz, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
+    if (G.allow('auto')) iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', W - pad - isz * 0.7, row2, isz, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
+    if (G.allow('turbo')) iconButton(ctx, 'turbo', 'bolt', W - pad - isz * 2.4, row2, isz, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
     H.autoAnchor = { x: W - pad - isz * 0.7, y: row2 - isz };
+    drawAutoMenu(ctx);
+  }
+
+  // − / + bet buttons (not in a replay)
+  function betButtons(ctx, minusX, plusX, y, r) {
+    if (!G.allow('bet')) return;
+    const lock = S.busy || S.inFS || S.auto > 0;
+    roundBtn(ctx, 'betDown', 'minus', minusX, y, r, () => G.Game.bet(-1), lock || S.betIndex === 0, 'Lower bet');
+    roundBtn(ctx, 'betUp', 'plus', plusX, y, r, () => G.Game.bet(1), lock || S.betIndex === G.BET_STEPS.length - 1, 'Raise bet');
+  }
+
+  // 400x225 and other short windows: everything on one slim row
+  function drawBottomCompact(ctx, bb) {
+    const W = G.W, cy = bb.y + bb.h / 2, pad = 6;
+    const isz = G.clamp(bb.h * 0.3, 12, 18);
+    iconButton(ctx, 'menu', 'menu', pad + isz * 0.7, cy, isz, () => G.UI.open('menu'), { label: 'Menu' });
+    iconButton(ctx, 'sound', G.settings.sfx || G.settings.music ? 'sound' : 'mute', pad + isz * 2.3, cy, isz, () => G.Game.toggleSound(), { label: 'Sound' });
+    const R = G.clamp(bb.h * 0.42, 15, 24), r = R * 0.55, g = 5;
+    let rx = W - pad;
+    const autoX = G.allow('auto') ? (rx -= r, rx) : null; if (autoX) rx -= r + g;
+    const plusX = rx - r; rx = plusX - r - g;
+    const spinX = rx - R; rx = spinX - R - g;
+    const minusX = rx - r; rx = minusX - r - g;
+    const turboX = G.allow('turbo') ? rx - r : null; if (turboX) rx = turboX - r - g;
+    betButtons(ctx, minusX, plusX, cy, r);
+    if (turboX) iconButton(ctx, 'turbo', 'bolt', turboX, cy, r * 1.1, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
+    if (autoX) iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, cy, r * 1.1, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
+    spinButton(ctx, spinX, cy, R);
+    H.autoAnchor = { x: autoX || spinX, y: bb.y };
+    // balance and bet on two lines, then the message in what is left
+    const left = pad + isz * 3.4, fsz = G.clamp(bb.h * 0.2, 8, 12), colW = Math.min(110, (rx - left) * 0.55);
+    const vy1 = cy - fsz * 0.65, vy2 = cy + fsz * 0.75;
+    if (G.allow('balance')) G.text(ctx, T('balance') + ' ' + G.money(S.credit), left, vy1, fsz, '#ffffff', { weight: 800, align: 'left', maxW: colW });
+    G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), left, G.allow('balance') ? vy2 : cy, fsz, '#ffd36b', { weight: 800, align: 'left', maxW: colW });
+    const mx = left + colW + 6;
+    if (rx - mx > 50) centerMessage(ctx, (mx + rx) / 2, cy, rx - mx - 6, fsz * 0.95);
     drawAutoMenu(ctx);
   }
 
@@ -427,7 +478,7 @@
   // fairness commitment under the board (click opens the verifier)
   H.drawHint = ctx => {
     const L = G.L;
-    if (!window.ProvablyFair) return;
+    if (!window.ProvablyFair || !G.allow('fair') || L.noHint) return;
     const h = ProvablyFair.serverHash;
     const text = `PROVABLY FAIR · ${h.slice(0, 10)}…${h.slice(-6)} · #${ProvablyFair.nonce}`;
     const size = G.clamp(L.hintH * 0.36, 9, 12);
