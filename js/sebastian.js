@@ -207,6 +207,12 @@
       ctx.globalAlpha = 0.5; ctx.drawImage(cl, px - s, f.floor - s * 0.55, s * 2, s * 1.1);
     }
     ctx.globalAlpha = 1;
+    // a soft contact shadow grounds him on the cloud; it shrinks and fades as he jumps
+    const up = G.clamp(-fig.jy / (f.h * 0.2), 0, 1), sw = f.w * 0.3 * (1 - up * 0.35), sh = f.h * 0.035 * (1 - up * 0.35);
+    const sg = ctx.createRadialGradient(f.cx, f.floor, 0, f.cx, f.floor, sw);
+    sg.addColorStop(0, `rgba(12,6,28,${0.42 * (1 - up * 0.6)})`); sg.addColorStop(1, 'rgba(12,6,28,0)');
+    ctx.save(); ctx.translate(f.cx, f.floor); ctx.scale(1, sh / sw); ctx.translate(-f.cx, -f.floor);
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(f.cx, f.floor, sw, 0, 7); ctx.fill(); ctx.restore();
     drawFigure(ctx, fig, 1, 1);
   };
   Seb.bubbleText = () => bubble && bubble.text;
