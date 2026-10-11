@@ -653,10 +653,10 @@
       ctx.globalAlpha = a;
       for (const p of parts) ctx.drawImage(p.it.fill[k], r.x + p.x, r.y + p.y, p.it.w, p.it.h);
     }
-    // lightning catches every polished edge at once
+    // lightning catches every polished edge at once (skyFlash is already limited for reduced motion and flashes)
     const fl = G.Scene && G.Scene.skyFlash ? G.Scene.skyFlash() : 0;
     if (fl > 0.02) {
-      ctx.globalAlpha = Math.min(0.6, fl * 0.8) * (G.settings.reducedMotion ? 0.3 : 1);
+      ctx.globalAlpha = Math.min(0.6, fl * 0.8);
       for (const p of parts) ctx.drawImage(p.it.spec, r.x + p.x, r.y + p.y, p.it.w, p.it.h);
     }
     // a column that just landed glints the lintel above it

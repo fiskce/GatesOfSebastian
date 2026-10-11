@@ -275,7 +275,10 @@
     const kx = tx + th / 2 + G.clamp(k, 0, 1) * (tw - th);
     plate(ctx, { x: kx - th / 2 + 2, y: ty + 2, w: th - 4, h: th - 4 }, 0, 'knob', 'rest');
     ctx.restore();
-    if (!P) G.text(ctx, T('antePlus'), bt.x + bt.w / 2, Math.min(ty + th + fb * 1.1, bt.y + bt.h - fb * 0.7), floor(fb * 0.66), S.ante ? EMERALD : TXT2, { weight: 700, maxW: bt.w * 0.92 });
+    // BET always shows the bet level; Double Chance's extra cost is shown here, on its own
+    const plus = S.ante ? T('antePlus') + ' · ' + G.money(G.spinCost()) : T('antePlus');
+    if (!P) G.text(ctx, plus, bt.x + bt.w / 2, Math.min(ty + th + fb * 1.1, bt.y + bt.h - fb * 0.7), floor(fb * 0.66), S.ante ? EMERALD : TXT2, { weight: 700, maxW: bt.w * 0.92 });
+    else if (S.ante) G.text(ctx, plus, bt.x + bt.w / 2, Math.min(ty + th + fb * 0.75, bt.y + bt.h - fb * 0.5), floor(fb * 0.6), EMERALD, { weight: 700, maxW: bt.w * 0.92 });
   }
 
   /* The multiplier collector: a storm jar. Empty, it is an engraved socket
@@ -607,7 +610,7 @@
     const fit = w => mx + w <= right;
     if (G.allow('balance') && fit(wBal)) { readout(ctx, { x: mx, y: ry, w: wBal, h: rh }, T('balance'), balance(), TXT, fsz, 'left'); mx += wBal + gap; }
     if (fit(wWin + wBet + gap)) { readout(ctx, { x: mx, y: ry, w: wWin, h: rh }, T('win'), winText(), winLive() ? '#ffd36b' : TXT2, fsz, 'left'); mx += wWin + gap; }
-    if (fit(wBet)) { readout(ctx, { x: mx, y: ry, w: wBet, h: rh }, T('bet'), G.money(G.spinCost()), TXT, fsz, 'left', betPress()); mx += wBet + gap; }
+    if (fit(wBet)) { readout(ctx, { x: mx, y: ry, w: wBet, h: rh }, T('bet'), G.money(G.baseBet()), TXT, fsz, 'left', betPress()); mx += wBet + gap; }
     const msg = toastText();
     if (msg && right - mx > 90) G.text(ctx, msg, (mx + right) / 2, cy - bb.h * 0.04, fsz * 0.95, TXT, { weight: 800, maxW: right - mx - 12, display: true });
   }
@@ -619,7 +622,7 @@
     let mx = pad;
     if (G.allow('balance')) { readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('balance'), balance(), TXT, fsz, 'center'); mx += cw + gap; }
     readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('win'), winText(), winLive() ? '#ffd36b' : TXT2, fsz, 'center'); mx += cw + gap;
-    readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('bet'), G.money(G.spinCost()), TXT, fsz, 'center', betPress());
+    readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('bet'), G.money(G.baseBet()), TXT, fsz, 'center', betPress());
     const row2 = bb.y + bb.h * 0.68;
     const R = G.clamp(Math.min(bb.h * 0.32, W * 0.12), 30, 54), r = R * 0.52;
     const isz = G.clamp(r * 0.95, 16, 26);
@@ -673,7 +676,7 @@
     if (G.allow('balance')) G.text(ctx, T('balance') + ' ' + balance(), left, vy1, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true });
     const bp = betPress(), byy = G.allow('balance') ? vy2 : cy;
     if (bp) G.button(bp.id, left, byy - fsz * 0.8, colW, fsz * 1.6, bp.fn, { disabled: bp.disabled, label: bp.label, reason: bp.reason });
-    G.text(ctx, T('bet') + ' ' + G.money(G.spinCost()), left, byy, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true });
+    G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), left, byy, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true });
     const mx = left + colW + 6;
     if (rx - mx > 50) {
       if (winLive()) G.text(ctx, T('win') + ' ' + winText(), (mx + rx) / 2, cy, fsz * 1.1, '#ffd36b', { weight: 800, maxW: rx - mx - 6, tabular: true });

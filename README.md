@@ -41,7 +41,7 @@ A major refinement, not a new game: the same board, Sebastian, dusk-to-storm sky
 
 **Chrome: machined ink steel** (`js/hud.js`, `css/style.css`)
 - Every control is one material: brushed ink-steel plates with a 1 px chamfer and a slim gold inlay; pressing sinks a plate; hover is the light catching its bevel. Gold is kept for money, Spin and the frame; Buy is ruby lacquer in a gold bezel.
-- The console reads **BALANCE · WIN · BET** in recessed readouts with fixed-advance digits. BET is the real cost per spin, Double Chance included, and opens a grid of every bet level. Wins land in WIN first, then the balance rolls up; at rest every amount is exactly the server's. Messages have their own lane and never show money.
+- The console reads **BALANCE · WIN · BET** in recessed readouts with fixed-advance digits. BET is always the bet level (the Double Chance module shows its extra cost on its own) and opens a grid of every bet level. Wins land in WIN first, then the balance rolls up; at rest every amount is exactly the server's. Messages have their own lane and never show money.
 - The Spin button is the one loud element: a knurled gold ring round an enamel dome (violet at dusk, amber in the storm) that sinks under a press, arrows that cock, run and settle, STOP while a round can be hurried, and a tick ring counting down free spins.
 - The multiplier collector is an engraved empty socket until orbs charge it (no more "x0"). The plaque is an enamel cartouche of fixed width. Cluster pays sit on smoked pills.
 - Text is never under 11 px (8 px at 400×225), small controls have 44 px touch areas (36 px in the compact layout), and the canvas keeps clear of notches.
