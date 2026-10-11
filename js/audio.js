@@ -127,7 +127,12 @@ const AudioEngine = (() => {
         const s = meta.slots[key];
         if (shift[s.file] == null || s.offset < shift[s.file].offset) shift[s.file] = { offset: s.offset, onset: s.onsetSamples || 0 };
       });
-      Object.keys(shift).forEach(f => { const t = shift[f]; shift[f] = bufs[f] ? sheetShift(bufs[f], t.offset, t.onset) : 0; });
+      Object.keys(shift).forEach(f => {
+        const t = shift[f], fi = meta.files[f] || {}, prime = ((fi.priming && fi.priming.m4a) || 1024) / (meta.sampleRate || 48000);
+        let d = bufs[f] ? sheetShift(bufs[f], t.offset, t.onset) : 0;
+        if (Math.abs(d) < 0.003) d = 0; else if (Math.abs(d - prime) < 0.003) d = prime;      // either skipped or kept the priming
+        shift[f] = d;
+      });
       Object.keys(meta.slots).forEach(key => {
         const s = meta.slots[key], hash = key.lastIndexOf('#'), name = key.slice(0, hash), v = +key.slice(hash + 1), buf = bufs[s.file];
         if (!buf) return;
@@ -147,18 +152,20 @@ const AudioEngine = (() => {
   }
   // file:// (or blocked fetches): render the recipes themselves
   const db = d => Math.pow(10, d / 20);
-  function renderSlot(name, v) {
-    const R = window.GOS_SFX, rec = R && R.RECIPES && R.RECIPES[name];
-    if (!rec) return null;
-    const out = R.render(name, v), L = out.L || out, Rt = out.R || L, n = L.length, sr = R.SR || 48000;
-    let peak = 0;
-    for (let i = 0; i < n; i++) { const a = Math.max(Math.abs(L[i]), Math.abs(Rt[i])); if (a > peak) peak = a; }
-    if (!peak) return null;
+  function makeSlot(name, out, gain) {
+    const R = window.GOS_SFX, rec = R.RECIPES[name], L = out.L || out, Rt = out.R || L, n = L.length, sr = R.SR || 48000;
+    if (!n) return null;
     const b = ctx.createBuffer(2, n, sr);
     b.getChannelData(0).set(L); b.getChannelData(1).set(Rt);
-    let gain = R.gainFor ? R.gainFor(name, out) : db(-18) / peak;      // the kit's own meter, the same one the sheets were levelled with
     busOf[name] = sheetBus[rec.bus] || 'world';
-    return { buf: b, start: 0, dur: n / sr, gain };
+    return { buf: b, start: 0, dur: n / sr, gain };      // gain: the kit's own meter, the same one the sheets were levelled with
+  }
+  // a sound wanted before the idle renderer reached it is rendered on the spot
+  function renderSlot(name, v) {
+    const R = window.GOS_SFX;
+    if (!R || !R.RECIPES || !R.RECIPES[name]) return null;
+    const out = R.render(name, v);
+    return makeSlot(name, out, R.gainFor ? R.gainFor(name, out) : db(-18));
   }
   function variantsOf(name) {
     if (slots[name]) return slots[name].length;
@@ -172,16 +179,26 @@ const AudioEngine = (() => {
   }
   let sheetsFailed = false;
   const PRIORITY = ['ui.press', 'spin.press', 'land.thock', 'spin.dropout', 'spin.lock', 'count.tick', 'win.tick', 'win.chime', 'ui.denied', 'ui.open', 'ui.close', 'toggle.on', 'toggle.off'];
+  // every recipe in idle time, most-used first, each in small steps (job) so no frame waits on a long one
   function renderInIdle() {
     const R = window.GOS_SFX;
-    if (!R || !R.RECIPES) return;
+    if (!R || !R.RECIPES || !R.job) return;
     const names = PRIORITY.filter(n => R.RECIPES[n]).concat(Object.keys(R.RECIPES).filter(n => PRIORITY.indexOf(n) < 0));
     const jobs = [];
     names.forEach(n => { for (let v = 0; v < (R.RECIPES[n].variants || 1); v++) jobs.push([n, v]); });
     const idle = window.requestIdleCallback || (f => setTimeout(() => f({ timeRemaining: () => 8 }), 30));
+    let j = null;
     const step = dl => {
-      while (jobs.length && dl.timeRemaining() > 4) { const [n, v] = jobs.shift(); slotFor(n, v); }
-      if (jobs.length) idle(step);
+      while (dl.timeRemaining() > 3) {
+        if (!j) {
+          const nx = jobs.shift();
+          if (!nx) return;
+          if ((slots[nx[0]] || [])[nx[1]]) continue;           // already rendered on demand
+          j = R.job(nx[0], nx[1]);
+        }
+        if (j.step()) { const list = slots[j.name] || (slots[j.name] = []); if (!list[j.variant]) list[j.variant] = makeSlot(j.name, j.out, j.gain) || undefined; j = null; }
+      }
+      if (jobs.length || j) idle(step);
     };
     idle(step);
   }
