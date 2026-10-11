@@ -238,6 +238,25 @@ ok('every string the code asks for exists (canvas, DOM and overlays)', () => {
   for (const m of fs.readFileSync(path.join(root, 'index.html'), 'utf8').matchAll(/data-t[ha]?="([a-zA-Z]+)"/g)) if (STR.T(m[1]) === m[1]) missing.push('index.html: ' + m[1]);
   assert.deepStrictEqual(missing, []);
 });
+ok('amounts never show more decimals than the currency has (no $3.025)', () => {
+  const vm = require('vm'), fs = require('fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'core.js'), 'utf8');
+  const money = src.match(/\/\/ -+ money -+\n([\s\S]*?)\n\s*\/\/ -+ fonts/)[1];     // the real formatter, on its own
+  const G = {};
+  vm.runInNewContext(money, { G });
+  const want = [['USD', 3.025, '$3.03'], ['USD', 16.125, '$16.13'], ['USD', 2.1875, '$2.19'], ['USD', 0.005, '$0.01'], ['USD', 0.004, '$0.00'],
+    ['USD', 1234567.891, '$1,234,567.89'], ['USD', -3.025, '-$3.03'], ['USD', 100, '$100.00'], ['JPY', 3.5, '¥4'], ['XSC', 2.1875, '2.19 SC'], ['EUR', 0.125, '€0.13']];
+  for (const [c, n, s] of want) { G.setCurrency(c); assert.strictEqual(G.money(n), s, c + ' ' + n); }
+  G.setCurrency('USD');
+  assert.strictEqual(G.countMoney(16.125, 16.125), '$16.13');
+  assert.strictEqual(G.money(16.125, 3), '$16.13');           // asking for more decimals still gives the currency's own
+  let seed = 7;
+  for (let i = 0; i < 20000; i++) {                            // any micro-unit amount: exactly two decimals
+    seed = (seed * 48271) % 2147483647;
+    const s = G.money(seed % 1e9 / 1e6);
+    assert.ok(/^\$[\d,]+\.\d{2}$/.test(s), s);
+  }
+});
 ok('the service worker is v10 and clears older versions of this game only', () => {
   const sw = require('fs').readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
   assert.ok(/VERSION = 'gos10-core-\d+'/.test(sw) && /MEDIA = VERSION\.replace\('-core-', '-media-'\)/.test(sw));

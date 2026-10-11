@@ -100,21 +100,17 @@ window.GOS = (() => {
     const c = CURRENCIES[G.currency];
     return c ? { sym: c[0], after: !!c[1], dec: c[2] == null ? 2 : c[2] } : { sym: G.currency, after: true, dec: 2 };
   }
-  // the currency's decimals, or more when the value isn't exact at that (sub-cent amounts), up to 6
-  G.placesFor = n => {
-    let p = cur().dec;
-    const u = Math.round(Math.abs(n) * 1e6);
-    while (p < 6 && u % Math.pow(10, 6 - p) !== 0) p++;
-    return p;
-  };
-  // a count shows the currency's normal decimals while it runs (no "$1.000" on the way to $16.125)
-  // and lands on the exact amount (G.countMoney)
+  /* Every amount shows exactly the currency's own decimals (two for USD, none for JPY):
+   * never three, so a sub-cent amount such as 3.025 reads $3.03. It is rounded to the
+   * nearest unit, half away from zero, from whole micro-units so float noise can't tip it.
+   * Only the display rounds: the balance and every win stay exact, as the RGS settles them. */
   G.countPlaces = () => cur().dec;
-  G.countMoney = (shown, to) => G.money(shown, Math.abs(shown - to) < 1e-9 ? G.placesFor(to) : cur().dec);
+  G.countMoney = shown => G.money(shown);
   G.money = (n, places) => {
-    const c = cur(), p = places != null ? places : G.placesFor(n);
-    const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: p, maximumFractionDigits: p });
-    return (n < 0 ? '-' : '') + (c.after ? s + ' ' + c.sym : c.sym + s);
+    const c = cur(), p = Math.min(places != null ? places : c.dec, c.dec);
+    const u = Math.round(Math.abs(n) * 1e6), v = Math.round(u / Math.pow(10, 6 - p)) / Math.pow(10, p);
+    const s = v.toLocaleString('en-US', { minimumFractionDigits: p, maximumFractionDigits: p });
+    return (n < 0 && v > 0 ? '-' : '') + (c.after ? s + ' ' + c.sym : c.sym + s);
   };
   G.xfmt = n => (Math.round(n * 100) / 100).toLocaleString('en-US') + '×';
 
