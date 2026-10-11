@@ -1,20 +1,29 @@
-/* Thunder Hunter Sebastian — HUD: side panels, logo, Sebastian, plaque, bottom bar.
+/* Thunder Hunter Sebastian — HUD: side panels, logo, plaque, bottom bar.
  * Everything is drawn on the canvas and registered as a hit region each frame
- * (G.button); input.js hit-tests the pointer against those regions.
+ * (G.button); game.js hit-tests the pointer against those regions.
+ *
+ * Chrome is one material: machined ink-steel plates (brushed, a 1 px chamfer,
+ * a slim gold inlay). Pressing sinks a plate, hover is the key light catching
+ * its bevel, and a disabled control is unlit metal that says why when pressed.
+ * Gold is kept for money, the Spin button and the frame; Buy is ruby lacquer.
+ * Plates are baked per size and state and drawn as images.
  */
 (() => {
   'use strict';
   const G = window.GOS, FX = G.FX, B = G.Board, E = G.E;
   const H = G.HUD = {};
   const S = G.S, T = G.T;
+  const INK = { 0: '#0A0C16', 1: '#12152A', 2: '#1B1F3A', 3: '#272C4D' }, TXT = '#F4F1EA', TXT2 = '#B9B6D3', EMERALD = '#2FD27A';
+  // smallest text the HUD draws: 11 px, 8 px in the 400x225 layout (Stake's check sizes)
+  const floor = px => Math.max(G.L.compact ? 8 : 11, px);
 
   // ---------------- buttons ----------------
-  const anim = {};   // per-button smoothed hover/press values
+  const anim = {};   // per-button sprung hover/press values
   G.button = (id, x, y, w, h, onClick, opts) => {
     opts = opts || {};
     const m = G.ctx.getTransform();
     const plain = m.a === G.DPR && m.d === G.DPR && !m.b && !m.c && !m.e && !m.f;
-    G.L.buttons.push({ id, x, y, w, h, onClick, shape: opts.shape, disabled: !!opts.disabled, label: opts.label || id, inv: plain ? null : m.inverse() });
+    G.L.buttons.push({ id, x, y, w, h, onClick, shape: opts.shape, disabled: !!opts.disabled, label: opts.label || id, reason: opts.reason, inv: plain ? null : m.inverse() });
     const a = anim[id] || (anim[id] = { h: 0, p: 0, hs: { x: 0, v: 0 }, ps: { x: 0, v: 0 }, t: G.clock.real });
     const hov = G.hoverId === id && !opts.disabled, pr = G.pressId === id && !opts.disabled;
     const dt = G.clamp(G.clock.real - a.t, 0, 0.05); a.t = G.clock.real;
@@ -23,9 +32,123 @@
     return a;
   };
 
+  // ---------------- reason chips ----------------
+  // a disabled control, when pressed, says why for a moment just above itself
+  let chip = null;
+  H.chip = (text, x, y) => { chip = { text, x, y, t: G.clock.real }; };
+  function drawChip(ctx) {
+    if (!chip) return;
+    const age = G.clock.real - chip.t;
+    if (age > 1.8) { chip = null; return; }
+    const a = Math.min(1, age / 0.12, (1.8 - age) / 0.3), size = floor(G.L.compact ? 9 : 12);
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.font = G.font(size, 800);
+    const w = ctx.measureText(chip.text).width + size * 1.6, h = size * 2;
+    const x = G.clamp(chip.x - w / 2, 6, G.W - w - 6), y = Math.max(6, chip.y - h - 8 - (1 - a) * 4);
+    G.roundRect(ctx, x, y, w, h, 8); ctx.fillStyle = 'rgba(10,12,22,.94)'; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = INK[3]; ctx.stroke();
+    G.text(ctx, chip.text, x + w / 2, y + h / 2, size, TXT, { weight: 800 });
+    ctx.restore();
+  }
+
+  // ---------------- chrome material ----------------
+  const plates = new Map();
+  const rrPath = (x, y, w, h, r) => {
+    const p = new Path2D(); r = Math.max(0, Math.min(r, w / 2, h / 2));
+    p.moveTo(x + r, y); p.arcTo(x + w, y, x + w, y + h, r); p.arcTo(x + w, y + h, x, y + h, r);
+    p.arcTo(x, y + h, x, y, r); p.arcTo(x, y, x + w, y, r); p.closePath();
+    return p;
+  };
+  /* kind: 'steel' (chrome plates), 'ruby' (Buy: oxblood lacquer in a gold
+   * bezel), 'well' (a recessed readout), 'disc' (round chrome buttons).
+   * state: 'rest', 'hover', 'down', 'off' (unlit). */
+  function bakePlate(w, h, rad, kind, state) {
+    const M = G.Mat, d = 1 / G.DPR, pad = Math.ceil(Math.max(4, Math.min(w, h) * 0.1));
+    const o = G.offscreen(w + pad * 2, h + pad * 2), x = o.x;
+    x.translate(pad, pad);
+    const round = kind === 'disc' || kind === 'knob';
+    const body = round ? (() => { const p = new Path2D(); p.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2); return p; })() : rrPath(0, 0, w, h, rad);
+    const off = state === 'off', down = state === 'down', hov = state === 'hover';
+    if (kind !== 'well' && !down) M.shadowOnly(x, k => k.fill(body), pad * 0.7, 0, pad * 0.3, 'rgba(0,0,0,.5)');
+    // body
+    let g;
+    if (kind === 'ruby') {
+      g = x.createRadialGradient(w * 0.3, h * 0.15, 0, w * 0.45, h * 0.4, Math.max(w, h) * 0.85);
+      g.addColorStop(0, off ? '#4a1620' : '#9a2234'); g.addColorStop(0.45, off ? '#34101a' : '#7A1322'); g.addColorStop(1, off ? '#1c070c' : '#3A0710');
+    } else if (kind === 'knob') {          // a polished steel knob, lit from the upper left
+      g = x.createRadialGradient(w * 0.32, h * 0.28, 0, w / 2, h / 2, w * 0.62);
+      g.addColorStop(0, '#f2f4fb'); g.addColorStop(0.5, '#a9afc6'); g.addColorStop(1, '#4c5270');
+    } else if (kind === 'well') {
+      g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#07080f'); g.addColorStop(1, INK[0]);
+    } else {
+      g = x.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, off ? '#151829' : down ? '#171a33' : INK[2]); g.addColorStop(1, off ? '#0d0f1c' : down ? '#0f1224' : INK[1]);
+    }
+    x.fillStyle = g; x.fill(body);
+    x.save(); x.clip(body);
+    const box = [0, 0, w, h];
+    if (kind === 'steel' || round) M.texture(x, 'brushed', kind === 'knob' ? 0.04 : 0.05, 'overlay', false, box);
+    else if (kind === 'ruby') M.texture(x, 'grain', 0.03, 'overlay', false, box);
+    if (kind === 'ruby' && !off) {
+      // clear coat: a soft window reflection up top, a warm caustic at the bottom
+      x.globalCompositeOperation = 'lighter';
+      const wr = x.createLinearGradient(0, h * 0.06, 0, h * 0.42);
+      wr.addColorStop(0, 'rgba(255,235,230,.18)'); wr.addColorStop(1, 'rgba(255,235,230,0)');
+      x.fillStyle = wr; x.fill(rrPath(w * 0.06, h * 0.05, w * 0.88, h * 0.36, Math.min(rad, h * 0.18)));
+      const cg = x.createRadialGradient(w / 2, h * 1.05, 0, w / 2, h * 1.05, w * 0.6);
+      cg.addColorStop(0, 'rgba(255,140,90,.10)'); cg.addColorStop(1, 'rgba(255,140,90,0)');
+      x.fillStyle = cg; x.fillRect(0, 0, w, h);
+      x.globalCompositeOperation = 'source-over';
+    } else if (kind !== 'well' && kind !== 'knob' && !off) {
+      const tl = x.createLinearGradient(0, 0, 0, h * 0.5);
+      tl.addColorStop(0, `rgba(200,210,255,${hov ? 0.09 : 0.05})`); tl.addColorStop(1, 'rgba(200,210,255,0)');
+      x.fillStyle = tl; x.fillRect(0, 0, w, h);
+    }
+    if (down || kind === 'well') M.innerShadow(x, body, kind === 'well' ? 5 : 6, 0, kind === 'well' ? 2 : 2.5, 'rgba(0,0,0,.75)', box);
+    x.restore();
+    // chamfer: the key light catches the top edge, the bottom edge falls away
+    const ch = x.createLinearGradient(0, 0, 0, h);
+    if (kind === 'well') { ch.addColorStop(0, 'rgba(0,0,0,.9)'); ch.addColorStop(0.6, 'rgba(0,0,0,0)'); ch.addColorStop(1, 'rgba(120,130,190,.35)'); }
+    else {
+      const lit = off ? 'rgba(58,65,112,.35)' : hov ? 'rgba(120,132,210,.85)' : down ? 'rgba(58,65,112,.4)' : 'rgba(58,65,112,.6)';
+      ch.addColorStop(0, lit); ch.addColorStop(0.5, 'rgba(5,6,12,0)'); ch.addColorStop(1, 'rgba(5,6,12,.95)');
+    }
+    x.lineWidth = d * 1.5; x.strokeStyle = ch; x.stroke(body);
+    // gold: a slim inlay on steel, a polished bezel round the lacquer
+    if (kind === 'ruby') {
+      x.lineWidth = Math.max(2, Math.min(w, h) * 0.035); x.strokeStyle = off ? 'rgba(160,120,50,.5)' : M.goldBar(x, 0, h); x.stroke(body);
+      x.lineWidth = d; x.strokeStyle = 'rgba(42,20,4,.9)'; x.stroke(rrPath(-x.lineWidth, -x.lineWidth, w + x.lineWidth * 2, h + x.lineWidth * 2, rad));
+    } else if (kind !== 'well' && kind !== 'knob') {
+      const ga = off ? 0.22 : hov ? 0.9 : down ? 0.65 : 0.55, ins = round ? 2.5 : 3;
+      const inl = round ? (() => { const p = new Path2D(); p.arc(w / 2, h / 2, w / 2 - ins, 0, Math.PI * 2); return p; })() : rrPath(ins, ins, w - ins * 2, h - ins * 2, Math.max(0, rad - ins * 0.7));
+      x.lineWidth = d * 1.2; x.strokeStyle = `rgba(242,201,90,${ga})`; x.stroke(inl);
+    }
+    return { c: o.c, pad };
+  }
+  function plate(ctx, r, rad, kind, state, alpha) {
+    const key = kind + '|' + state + '|' + Math.round(r.w * 2) + 'x' + Math.round(r.h * 2) + '|' + Math.round(rad) + '|' + G.DPR;
+    let c = plates.get(key);
+    if (!c) { c = bakePlate(r.w, r.h, rad, kind, state); plates.set(key, c); }
+    if (alpha != null) { if (alpha < 0.01) return; ctx.save(); ctx.globalAlpha *= alpha; }
+    ctx.drawImage(c.c, r.x - c.pad, r.y - c.pad, r.w + c.pad * 2, r.h + c.pad * 2);
+    if (alpha != null) ctx.restore();
+  }
+  // a pressable plate: rest, with hover and press crossfaded in by their springs
+  function plateButton(ctx, r, rad, kind, a, off) {
+    if (off) { plate(ctx, r, rad, kind, 'off'); return; }
+    plate(ctx, r, rad, kind, 'rest');
+    plate(ctx, r, rad, kind, 'hover', a.h * (1 - G.clamp(a.p, 0, 1)));
+    plate(ctx, r, rad, kind, 'down', G.clamp(a.p, 0, 1));
+  }
+  // pressing sinks a plate a little (1 px down, 1.5% smaller)
+  function sink(ctx, r, a) {
+    const p = G.clamp(a.p, -0.2, 1), s = 1 - p * 0.015;
+    ctx.translate(r.x + r.w / 2, r.y + r.h / 2 + p); ctx.scale(s, s); ctx.translate(-(r.x + r.w / 2), -(r.y + r.h / 2));
+  }
+
   // ---------------- icons (vector, no emoji) ----------------
   H.icon = (ctx, name, cx, cy, s, color) => {
-    ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = ctx.fillStyle = color || '#f3d27a';
+    ctx.save(); ctx.translate(cx, cy); ctx.strokeStyle = ctx.fillStyle = color || TXT;
     ctx.lineWidth = Math.max(1.6, s * 0.11); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const r = s / 2;
     switch (name) {
@@ -74,13 +197,14 @@
   };
 
   // ---------------- logo (pre-rendered per layout) ----------------
-  let logoC = null;
-  H.invalidate = () => { logoC = null; };
+  let logoC = null, barC = null, plaqueC = null, socketC = null;
+  const spinC = new Map();
+  H.invalidate = () => { logoC = barC = plaqueC = socketC = null; plates.clear(); spinC.clear(); };
   function buildLogo() {
     const b = G.L.logo, o = G.offscreen(b.w, b.h), x = o.x;
     const big = Math.min(b.h * 0.5, b.w * 0.16);
     x.save();
-    G.text(x, 'FISKCE PRESENTS', b.w / 2, b.h * 0.14, big * 0.26, '#e9d7ff', { weight: 700, display: true, shadow: 'rgba(0,0,0,.7)' });
+    G.text(x, 'FISKCE PRESENTS', b.w / 2, b.h * 0.14, Math.max(11, big * 0.26), '#e9d7ff', { weight: 700, display: true, shadow: 'rgba(0,0,0,.7)' });
     G.goldText(x, T('titleTop'), b.w / 2, b.h * 0.36, big * 0.5, { maxW: b.w * 0.9, glow: 'rgba(255,150,40,.55)' });
     G.goldText(x, T('titleMain'), b.w / 2, b.h * 0.72, big, { maxW: b.w * 0.98, glow: 'rgba(255,150,40,.7)' });
     x.restore();
@@ -91,264 +215,355 @@
     if (!logoC) buildLogo();
     const b = G.L.logo, t = G.clock.real;
     ctx.drawImage(logoC, b.x, b.y, b.w, b.h);
-    // a glint sweeping across the title every few seconds
-    const p = (t % 5) / 1.2;
+    // a glint sweeping across the title, rarely (the frame and Spin carry the life)
+    const p = (t % 9) / 1.2;
     if (p < 1) {
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.sin(p * Math.PI) * 0.9;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.sin(p * Math.PI) * 0.8;
       const gx = b.x + b.w * (p * 1.2 - 0.1);
       ctx.drawImage(FX.starSprite(), gx - b.h * 0.25, b.y + b.h * 0.55 - b.h * 0.25, b.h * 0.5, b.h * 0.5);
       ctx.restore();
     }
   };
 
-  // ---------------- left column: buy / ante / multiplier ----------------
-  function panel(ctx, r, top, bot, border, radius) {
-    const g = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
-    g.addColorStop(0, top); g.addColorStop(1, bot);
-    G.roundRect(ctx, r.x, r.y, r.w, r.h, radius); ctx.fillStyle = g; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = border; ctx.stroke();
-    G.roundRect(ctx, r.x + 3, r.y + 3, r.w - 6, r.h * 0.45, radius * 0.8);
-    const sh = ctx.createLinearGradient(0, r.y, 0, r.y + r.h * 0.45);
-    sh.addColorStop(0, 'rgba(255,255,255,.16)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = sh; ctx.fill();
-  }
-  function hoverGlow(ctx, r, a, radius, color) {
-    if (a.h < 0.02) return;
-    ctx.save(); ctx.globalAlpha = a.h; ctx.shadowColor = color || 'rgba(255,210,120,.9)'; ctx.shadowBlur = 22;
-    G.roundRect(ctx, r.x, r.y, r.w, r.h, radius); ctx.strokeStyle = 'rgba(255,236,170,.9)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
-  }
-  function pressScale(ctx, r, a) {
-    const s = 1 - a.p * 0.04 + a.h * 0.015;
-    ctx.translate(r.x + r.w / 2, r.y + r.h / 2); ctx.scale(s, s); ctx.translate(-(r.x + r.w / 2), -(r.y + r.h / 2));
-  }
-
+  // ---------------- left column: buy / double chance / multiplier ----------------
   H.drawLeft = ctx => {
-    const L = G.L, P = L.portrait, rad = Math.min(16, L.buy.h * 0.18);
-    // BUY FREE SPINS
-    const br = L.buy;
+    const L = G.L, P = L.portrait, rad = Math.min(12, L.buy.h * 0.16);
     if (!G.allow('buy')) { drawBetPanel(ctx, L, P, rad); drawWell(ctx); return; }
-    // pressable whenever no round is running: it says why when it can't (double chance on, balance too low)
-    const buyIdle = !S.busy && !S.inFS, buyOk = buyIdle && !S.ante && G.Game.canAfford('bonus');
-    const a = G.button('buy', br.x, br.y, br.w, br.h, () => G.Game.askBuy(), { disabled: !buyIdle, label: T('buyTitle') });
-    ctx.save(); pressScale(ctx, br, a);
-    ctx.globalAlpha = buyOk ? 1 : 0.5;
-    panel(ctx, br, '#c4253b', '#5c0a18', '#f2c45a', rad);
-    if (buyOk) { // slow shimmer across the button
-      const p = (G.clock.real % 3.2) / 3.2;
-      ctx.save(); G.roundRect(ctx, br.x, br.y, br.w, br.h, rad); ctx.clip();
-      const sx = br.x - br.w * 0.5 + p * br.w * 2;
-      const sg = ctx.createLinearGradient(sx - br.w * 0.25, 0, sx + br.w * 0.25, 0);
-      sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,240,200,.22)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = sg; ctx.fillRect(br.x, br.y, br.w, br.h); ctx.restore();
-    }
+    // BUY FREE SPINS: pressable whenever no round is running; it says why when it can't
+    const br = L.buy, buyIdle = !S.busy && !S.inFS, buyOk = buyIdle && !S.ante && G.Game.canAfford('bonus');
+    const a = G.button('buy', br.x, br.y, br.w, br.h, () => G.Game.askBuy(), { disabled: !buyIdle, label: T('buyTitle'), reason: S.inFS ? 'reasonFS' : 'reasonRound' });
+    ctx.save(); sink(ctx, br, a);
+    plateButton(ctx, br, rad, 'ruby', a, !buyOk);
     const fs = P ? Math.min(br.h * 0.22, br.w * 0.1) : Math.min(br.h * 0.16, br.w * 0.12);
-    G.text(ctx, T('buy'), br.x + br.w / 2, br.y + br.h * (P ? 0.24 : 0.24), fs * 0.9, '#ffe6b0', { weight: 800, maxW: br.w * 0.9 });
+    ctx.globalAlpha = buyOk ? 1 : 0.6;
+    G.text(ctx, T('buy'), br.x + br.w / 2, br.y + br.h * 0.24, floor(fs * 0.9), '#ffe6dc', { weight: 800, maxW: br.w * 0.9 });
     G.goldText(ctx, T('freeSpins'), br.x + br.w / 2, br.y + br.h * (P ? 0.5 : 0.48), fs * 1.15, { maxW: br.w * 0.88 });
-    G.text(ctx, G.money(G.buyCost()), br.x + br.w / 2, br.y + br.h * (P ? 0.78 : 0.76), fs * 1.15, '#ffffff', { weight: 800, maxW: br.w * 0.9, shadow: 'rgba(0,0,0,.6)' });
+    G.text(ctx, G.money(G.buyCost()), br.x + br.w / 2, br.y + br.h * (P ? 0.78 : 0.76), fs * 1.15, TXT, { weight: 800, maxW: br.w * 0.9, tabular: true });
     ctx.restore();
-    hoverGlow(ctx, br, a, rad);
     drawBetPanel(ctx, L, P, rad);
     drawWell(ctx);
   };
 
-  // BET + DOUBLE CHANCE (ante). BET is the bet level; the ante's extra 25% is shown on its own line.
+  // DOUBLE CHANCE (ante) on a steel plate; the bet itself lives in the bottom bar's BET readout
   function drawBetPanel(ctx, L, P, rad) {
     const bt = L.bet, anteOk = !S.busy && !S.inFS && G.allow('ante');
-    panel(ctx, bt, 'rgba(40,18,74,.92)', 'rgba(14,6,30,.95)', '#b8892e', rad);
+    plate(ctx, bt, rad, 'steel', 'rest');
     const fb = P ? Math.min(bt.h * 0.2, bt.w * 0.085) : Math.min(bt.h * 0.11, bt.w * 0.1);
     if (G.mode === 'replay') {      // a replay shows its bet and nothing to change
-      G.text(ctx, T('replay'), bt.x + bt.w / 2, bt.y + bt.h * 0.3, fb * 1.1, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
-      G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.62, fb * 1.05, '#ffffff', { weight: 800, maxW: bt.w * 0.9 });
+      G.text(ctx, T('replay'), bt.x + bt.w / 2, bt.y + bt.h * 0.3, floor(fb * 1.1), TXT, { weight: 800, maxW: bt.w * 0.9 });
+      G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.62, floor(fb * 1.05), TXT, { weight: 800, maxW: bt.w * 0.9 });
       return;
     }
-    if (!P) {
-      G.text(ctx, T('bet'), bt.x + bt.w / 2, bt.y + bt.h * 0.13, fb * 0.85, '#c9b6ee', { weight: 700 });
-      G.text(ctx, G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.28, fb * 1.45, '#ffffff', { weight: 800, maxW: bt.w * 0.9 });
-      G.text(ctx, T('doubleChance'), bt.x + bt.w / 2, bt.y + bt.h * 0.47, fb * 0.78, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
-      G.text(ctx, T('doubleChanceSub'), bt.x + bt.w / 2, bt.y + bt.h * 0.57, fb * 0.66, '#c9b6ee', { weight: 700, maxW: bt.w * 0.9 });
-    } else {
-      G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.24, fb * 1.15, '#ffffff', { weight: 800, maxW: bt.w * 0.92 });
-      G.text(ctx, T('doubleChance'), bt.x + bt.w / 2, bt.y + bt.h * 0.5, fb * 0.8, '#ffd36b', { weight: 800, maxW: bt.w * 0.9 });
-    }
-    // toggle switch
+    // the bet itself lives in the console's BET readout; this plate is the Double Chance module
+    G.text(ctx, T('doubleChance'), bt.x + bt.w / 2, bt.y + bt.h * (P ? 0.27 : 0.2), floor(fb * (P ? 0.85 : 0.95)), TXT, { weight: 800, maxW: bt.w * 0.9 });
+    if (!P) G.text(ctx, T('doubleChanceSub'), bt.x + bt.w / 2, bt.y + bt.h * 0.33, floor(fb * 0.7), TXT2, { weight: 700, maxW: bt.w * 0.9 });
+    // a detent slider: an ink channel, a steel knob, emerald when ON
     const tw = Math.min(bt.w * 0.62, (P ? bt.h * 0.34 : bt.h * 0.2) * 2.6), th = tw / 2.6;
-    const tx = bt.x + (bt.w - tw) / 2, ty = bt.y + bt.h * (P ? 0.64 : 0.66);
-    const ta = G.button('ante', tx - 6, ty - 6, tw + 12, th + 12, () => G.Game.toggleAnte(), { disabled: !anteOk, label: T('doubleChance') });
-    H.anteK = (H.anteK || 0) + ((S.ante ? 1 : 0) - (H.anteK || 0)) * 0.25;
-    const k = H.anteK;
+    const tx = bt.x + (bt.w - tw) / 2, ty = bt.y + bt.h * (P ? 0.5 : 0.47);
+    const ta = G.button('ante', tx - 6, ty - 6, tw + 12, th + 12, () => G.Game.toggleAnte(), { disabled: !anteOk, label: T('doubleChance'), reason: S.inFS ? 'reasonFS' : 'reasonRound' });
+    const ks = H.anteS || (H.anteS = { x: S.ante ? 1 : 0, v: 0, t: G.clock.real });
+    const k = G.clamp(G.spring(ks, S.ante ? 1 : 0, G.clamp(G.clock.real - ks.t, 0, 0.05), G.SPRING.KNOB), -0.05, 1.05); ks.t = G.clock.real;
     ctx.save(); ctx.globalAlpha = anteOk ? 1 : 0.55;
-    G.roundRect(ctx, tx, ty, tw, th, th / 2);
-    ctx.fillStyle = k > 0.5 ? '#1f8a4c' : '#3a2350'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#f2c45a'; ctx.stroke();
-    G.text(ctx, S.ante ? T('on') : T('off'), tx + (S.ante ? tw * 0.32 : tw * 0.68), ty + th / 2, th * 0.48, '#ffffff', { weight: 800 });
-    const kx = tx + th / 2 + k * (tw - th);
-    const kg = ctx.createRadialGradient(kx - th * 0.15, ty + th * 0.35, 1, kx, ty + th / 2, th / 2);
-    kg.addColorStop(0, '#fff7d6'); kg.addColorStop(1, '#d19a2a');
-    ctx.fillStyle = kg; ctx.beginPath(); ctx.arc(kx, ty + th / 2, th / 2 - 2, 0, 7); ctx.fill();
+    plate(ctx, { x: tx, y: ty, w: tw, h: th }, th / 2, 'well', 'rest');
+    if (k > 0.02) {
+      ctx.save(); ctx.globalAlpha *= G.clamp(k, 0, 1);
+      G.roundRect(ctx, tx + 2, ty + 2, tw - 4, th - 4, th / 2 - 2);
+      const eg = ctx.createLinearGradient(0, ty, 0, ty + th); eg.addColorStop(0, '#45e893'); eg.addColorStop(1, '#1f9a58');
+      ctx.fillStyle = eg; ctx.fill(); ctx.restore();
+    }
+    G.text(ctx, S.ante ? T('on') : T('off'), tx + (S.ante ? tw * 0.32 : tw * 0.68), ty + th / 2, floor(th * 0.48), S.ante ? '#06200f' : TXT2, { weight: 800 });
+    const kx = tx + th / 2 + G.clamp(k, 0, 1) * (tw - th);
+    plate(ctx, { x: kx - th / 2 + 2, y: ty + 2, w: th - 4, h: th - 4 }, 0, 'knob', 'rest');
     ctx.restore();
-    if (ta.h > 0.02) { ctx.save(); ctx.globalAlpha = ta.h; ctx.shadowColor = '#ffd27a'; ctx.shadowBlur = 14; G.roundRect(ctx, tx, ty, tw, th, th / 2); ctx.strokeStyle = '#fff1c0'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
-    if (!P) G.text(ctx, S.ante ? T('antePlus') + ' · ' + G.money(G.spinCost()) : T('antePlus'), bt.x + bt.w / 2, Math.min(ty + th + fb * 0.95, bt.y + bt.h - fb * 0.7), fb * 0.62, S.ante ? '#ffd36b' : '#9a86c8', { weight: 700, maxW: bt.w * 0.92 });
+    if (!P) G.text(ctx, T('antePlus'), bt.x + bt.w / 2, Math.min(ty + th + fb * 1.1, bt.y + bt.h - fb * 0.7), floor(fb * 0.66), S.ante ? EMERALD : TXT2, { weight: 700, maxW: bt.w * 0.92 });
   }
 
-  // the multiplier collector: orbs fly into it, its value slams into wins
+  /* The multiplier collector: a storm jar. Empty, it is an engraved socket
+   * (no "x0" that reads like a fault); orbs fill it with charged glass. */
   H.wellCenter = () => {
     const w = G.L.well;
     return G.L.portrait ? { x: w.x + w.w / 2, y: w.y + w.h * 0.6 } : { x: w.x + w.w / 2, y: w.y + w.h * 0.58 };
   };
+  function bakeSocket(R) {
+    const M = G.Mat, s = R * 2 + 8, o = G.offscreen(s, s), x = o.x, c = s / 2;
+    const disc = new Path2D(); disc.arc(c, c, R, 0, Math.PI * 2);
+    const g = x.createRadialGradient(c, c - R * 0.3, R * 0.1, c, c, R);
+    g.addColorStop(0, '#141832'); g.addColorStop(1, '#05060c');
+    x.fillStyle = g; x.fill(disc);
+    M.innerShadow(x, disc, R * 0.18, 0, R * 0.08, 'rgba(0,0,0,.85)', [c - R, c - R, R * 2, R * 2]);
+    // an engraved bolt waiting for its charge
+    const b = new Path2D(), r = R * 0.42;
+    b.moveTo(c + r * 0.2, c - r); b.lineTo(c - r * 0.6, c + r * 0.12); b.lineTo(c - r * 0.02, c + r * 0.12); b.lineTo(c - r * 0.25, c + r); b.lineTo(c + r * 0.62, c - r * 0.18); b.lineTo(c + r * 0.04, c - r * 0.18); b.closePath();
+    M.engrave(x, b, Math.max(1, R * 0.035), 'rgba(0,0,0,.9)', 'rgba(150,160,220,.28)');
+    // the gold rim it sits in
+    x.lineWidth = Math.max(2, R * 0.08); x.strokeStyle = M.goldRound(x, c - R, c - R, c + R, c + R); x.stroke(disc);
+    return o.c;
+  }
   function drawWell(ctx) {
     const L = G.L, w = L.well, P = L.portrait, t = G.clock.real;
-    const val = S.inFS ? S.persistent : S.spinMult;
-    const active = val > 0;
-    const rad = Math.min(16, w.h * 0.18);
-    panel(ctx, w, 'rgba(30,12,58,.92)', 'rgba(8,3,18,.96)', S.inFS ? '#ffd36b' : '#7a5a1e', rad);
+    const val = S.inFS ? S.persistent : S.spinMult, active = val > 0;
+    const rad = Math.min(12, w.h * 0.16);
+    plate(ctx, w, rad, 'steel', 'rest');
     const label = S.inFS ? T('totalMulti') : T('multiplier');
-    G.text(ctx, label, w.x + w.w / 2, w.y + w.h * (P ? 0.2 : 0.14), Math.min(w.w * 0.1, w.h * (P ? 0.17 : 0.09)), active ? '#ffd36b' : '#9a86c8', { weight: 800, maxW: w.w * 0.9 });
+    G.text(ctx, label, w.x + w.w / 2, w.y + w.h * (P ? 0.2 : 0.14), floor(Math.min(w.w * 0.1, w.h * (P ? 0.17 : 0.09))), active ? '#ffd36b' : TXT2, { weight: 800, maxW: w.w * 0.9 });
     const c = H.wellCenter(), R = Math.min(w.w * 0.36, w.h * (P ? 0.34 : 0.3));
-    // socket
-    const sg = ctx.createRadialGradient(c.x, c.y - R * 0.3, R * 0.1, c.x, c.y, R);
-    sg.addColorStop(0, active ? '#5a2a9a' : '#2a1648'); sg.addColorStop(1, '#0a0418');
-    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, 7); ctx.fill();
-    ctx.lineWidth = Math.max(2, R * 0.08); ctx.strokeStyle = '#d9a63a'; ctx.stroke();
-    // swirling energy when charged
+    const sk = Math.round(R * 2) / 2;
+    if (!socketC || socketC.R !== sk) socketC = { R: sk, c: bakeSocket(sk) };
+    const ss = sk * 2 + 8;
+    ctx.drawImage(socketC.c, c.x - ss / 2, c.y - ss / 2, ss, ss);
     if (active) {
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const col = G.ORB_COLORS[G.orbTier(val)][3];
+      // charged storm glass in the socket, energy crawling round it
+      const tier = G.orbTier(val), col = G.ORB_COLORS[tier];
+      ctx.save();
+      const gg = ctx.createRadialGradient(c.x - R * 0.3, c.y - R * 0.35, R * 0.05, c.x, c.y, R * 0.92);
+      gg.addColorStop(0, FX.hexA(col[0], 0.9)); gg.addColorStop(0.45, FX.hexA(col[1], 0.75)); gg.addColorStop(1, FX.hexA(col[2], 0.9));
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(c.x, c.y, R * 0.9, 0, 7); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
       for (let k = 0; k < 4; k++) {
         const a0 = t * (2 + k * 0.6) + k * 1.6;
-        ctx.strokeStyle = col; ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 4 + k); ctx.lineWidth = 2;
+        ctx.strokeStyle = col[3]; ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * 4 + k); ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(c.x, c.y, R * (0.72 + k * 0.08), a0, a0 + 1.3); ctx.stroke();
       }
-      ctx.globalAlpha = 0.5; const gs = R * 2.2;
-      ctx.drawImage(FX.glowSprite(col), c.x - gs, c.y - gs, gs * 2, gs * 2);
+      ctx.globalAlpha = 0.45; const gs = R * 2.2;
+      ctx.drawImage(FX.glowSprite(col[3]), c.x - gs, c.y - gs, gs * 2, gs * 2);
+      ctx.restore();
+      const pulse = Math.max(0, 1 - (G.clock.real - (S.wellPulseT || -9)) / 0.5);
+      ctx.save(); ctx.translate(c.x, c.y); ctx.scale(1 + pulse * 0.45, 1 + pulse * 0.45);
+      const txt = '×' + val;
+      G.goldText(ctx, txt, 0, R * 0.04, R * (txt.length > 4 ? 0.62 : 0.8), { maxW: R * 1.8, glow: 'rgba(255,170,60,.8)', tabular: true });
       ctx.restore();
     }
-    const pulse = Math.max(0, 1 - (G.clock.real - (S.wellPulseT || -9)) / 0.5);
-    ctx.save(); ctx.translate(c.x, c.y); ctx.scale(1 + pulse * 0.45, 1 + pulse * 0.45);
-    const txt = 'x' + val;
-    if (active) G.goldText(ctx, txt, 0, R * 0.04, R * (txt.length > 4 ? 0.62 : 0.8), { maxW: R * 1.8, glow: 'rgba(255,170,60,.8)' });
-    else G.text(ctx, txt, 0, R * 0.04, R * 0.7, 'rgba(200,180,240,.45)', { weight: 800, display: true });
-    ctx.restore();
   }
 
-  // the tumble win counts up toward the spin's total (or its multiplied total)
-  const tumblePlaces = () => G.countPlaces(S.countTo != null ? S.countTo : S.tumbleWin);
-
-  // ---------------- top plaque ----------------
+  // ---------------- top plaque: an enamel cartouche of fixed width ----------------
+  // the tumble win counts toward the spin's total (or its multiplied total)
+  const countTo = () => (S.countTo != null ? S.countTo : S.tumbleWin);
+  function bakePlaque(w, h) {
+    const M = G.Mat, pad = 6, o = G.offscreen(w + pad * 2, h + pad * 2), x = o.x;
+    x.translate(pad, pad);
+    // a cartouche: a long plate with notched, rounded ends
+    const n = h * 0.32, p = new Path2D();
+    p.moveTo(n, 0); p.lineTo(w - n, 0); p.arc(w, 0, n, Math.PI, Math.PI * 0.5, true); p.lineTo(w, h - n); p.arc(w, h, n, Math.PI * 1.5, Math.PI, true);
+    p.lineTo(n, h); p.arc(0, h, n, 0, -Math.PI * 0.5, true); p.lineTo(0, n); p.arc(0, 0, n, Math.PI * 0.5, 0, true); p.closePath();
+    M.shadowOnly(x, k => k.fill(p), 5, 0, 2, 'rgba(0,0,0,.55)');
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#8e1a30'); g.addColorStop(0.5, '#7a1428'); g.addColorStop(1, '#4a0a18');
+    x.fillStyle = g; x.fill(p);
+    x.save(); x.clip(p);
+    M.texture(x, 'grain', 0.03, 'overlay', false, [0, 0, w, h]);
+    x.globalCompositeOperation = 'lighter';
+    const wr = x.createLinearGradient(0, 0, 0, h * 0.45); wr.addColorStop(0, 'rgba(255,230,230,.16)'); wr.addColorStop(1, 'rgba(255,230,230,0)');
+    x.fillStyle = wr; x.fillRect(0, 0, w, h * 0.45);
+    x.restore();
+    x.lineWidth = Math.max(1.5, h * 0.06); x.strokeStyle = M.goldBar(x, 0, h); x.stroke(p);
+    return o.c;
+  }
   H.drawPlaque = ctx => {
     const L = G.L, p = L.plaque, P = L.portrait;
-    let line;
-    if (S.inFS) line = S.tumbleShown > 0 ? T('tumbleWin') + ' ' + G.money(S.tumbleShown, tumblePlaces()) : T('freeSpinOf', { a: Math.min(S.fsPlayed, S.fsAward), b: S.fsAward });
-    else if (S.tumbleShown > 0) line = T('tumbleWin') + ' ' + G.money(S.tumbleShown, tumblePlaces());
+    let line, money = false;
+    if (S.tumbleShown > 0) { line = T('tumbleWin') + ' ' + G.countMoney(S.tumbleShown, countTo()); money = true; }
+    else if (S.inFS) line = T('freeSpins');          // the count itself is on the Spin dome, once
     else line = T('winUpTo');
     const size = L.compact ? G.clamp(L.topH * 0.42, 9, 14) : P ? Math.min(G.W * 0.045, 22) : G.clamp(L.reel.w * 0.032, 16, 30);
-    const maxW = P ? G.W * 0.56 : L.compact ? L.reel.w * 1.2 : L.reel.w * 0.8;
-    ctx.font = G.font(size, 900, true);
-    const tw = Math.min(maxW, ctx.measureText(line).width) + size * 2.2, th = size * 1.75;
+    // fixed width per layout: it never resizes as its line changes
+    const tw = Math.round(L.compact ? Math.min(G.W * 0.5, L.reel.w * 1.15) : P ? G.W * 0.62 : Math.min(L.reel.w * 0.66, size * 17)), th = Math.round(size * 1.75);
     const x = G.clamp(p.cx - tw / 2, 4, G.W - tw - 4), y = p.y - th / 2, cx = x + tw / 2;
     H.plaqueC = { x: cx, y: p.y };
-    // ribbon
-    const g = ctx.createLinearGradient(0, y, 0, y + th);
-    g.addColorStop(0, 'rgba(70,16,30,.92)'); g.addColorStop(1, 'rgba(30,6,14,.95)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + tw, y); ctx.lineTo(x + tw - th * 0.35, y + th / 2); ctx.lineTo(x + tw, y + th); ctx.lineTo(x, y + th); ctx.lineTo(x + th * 0.35, y + th / 2); ctx.closePath(); ctx.fill();
-    ctx.lineWidth = 1.5; ctx.strokeStyle = '#e8b54a'; ctx.stroke();
+    if (!plaqueC || plaqueC.w !== tw || plaqueC.h !== th) plaqueC = { w: tw, h: th, c: bakePlaque(tw, th) };
+    ctx.drawImage(plaqueC.c, x - 6, y - 6, tw + 12, th + 12);
     const pop = Math.max(0, 1 - (G.clock.real - (S.plaquePopT || -9)) / 0.3);
-    ctx.save(); ctx.translate(cx, p.y); ctx.scale(1 + pop * 0.12, 1 + pop * 0.12);
-    G.goldText(ctx, line, 0, 1, size, { maxW });
+    ctx.save(); ctx.translate(cx, p.y); ctx.scale(1 + pop * 0.08, 1 + pop * 0.08);
+    G.goldText(ctx, line, 0, 1, size, { maxW: tw - th * 1.1, tabular: money });
     ctx.restore();
   };
 
-  // ---------------- bottom bar ----------------
+  // ---------------- bottom bar: the console ----------------
+  function bakeBar(w, h) {
+    const M = G.Mat, o = G.offscreen(w, h), x = o.x;
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(18,21,42,.97)'); g.addColorStop(1, 'rgba(10,12,22,.99)');
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    x.save(); x.beginPath(); x.rect(0, 0, w, h); x.clip(); M.texture(x, 'brushed', 0.04, 'overlay', false, [0, 0, w, h]); x.restore();
+    // top edge: the chamfer catching the light, then a slim gold inlay that fades out at the sides
+    x.fillStyle = 'rgba(58,65,112,.7)'; x.fillRect(0, 0, w, 1 / G.DPR);
+    const lg = x.createLinearGradient(0, 0, w, 0);
+    lg.addColorStop(0, 'rgba(242,201,90,0)'); lg.addColorStop(0.5, 'rgba(242,201,90,.75)'); lg.addColorStop(1, 'rgba(242,201,90,0)');
+    x.fillStyle = lg; x.fillRect(0, 2, w, 1.2 / G.DPR);
+    return o.c;
+  }
+  // a recessed readout: label on top, the value under it in fixed-advance digits
+  function readout(ctx, r, label, value, color, size, align, press) {
+    let a = null;
+    if (press) a = G.button(press.id, r.x, r.y, r.w, r.h, press.fn, { disabled: press.disabled, label: press.label, reason: press.reason });
+    plate(ctx, r, Math.min(8, r.h * 0.2), 'well', 'rest');
+    const ax = align === 'left' ? r.x + size * 0.7 : align === 'right' ? r.x + r.w - size * 0.7 : r.x + r.w / 2;
+    G.text(ctx, label, ax, r.y + r.h * 0.3, floor(size * 0.62), a && a.h > 0.3 ? TXT : TXT2, { weight: 700, align, maxW: r.w - size * 1.6 });
+    G.text(ctx, value, ax, r.y + r.h * 0.68, size, color, { weight: 800, align, maxW: r.w - size * 1.6, tabular: true });
+    if (a && !press.disabled) {     // a small chevron says it opens something
+      const cx = r.x + r.w - size * 0.75, cy = r.y + r.h * 0.5, k = size * 0.22;
+      ctx.save(); ctx.strokeStyle = a.h > 0.3 ? TXT : TXT2; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(cx - k, cy - k * 0.5); ctx.lineTo(cx, cy + k * 0.5); ctx.lineTo(cx + k, cy - k * 0.5); ctx.stroke(); ctx.restore();
+    }
+  }
+  // the BET readout opens every bet level
+  const betPress = () => {
+    const why = S.inFS ? 'reasonFS' : S.auto > 0 ? 'reasonAuto' : S.busy ? 'reasonRound' : null;
+    return G.allow('bet') && G.mode !== 'replay' ? { id: 'betReadout', fn: () => G.UI.open('bets'), disabled: !!why, reason: why, label: T('betsTitle') } : null;
+  };
+  // the balance on screen rolls up to a win and drops straight to a debit; at rest it is exactly S.credit
+  let balShown = null, balT = 0;
+  function balance() {
+    const now = G.clock.real, dt = Math.min(0.05, now - balT); balT = now;
+    if (balShown == null || S.credit < balShown) balShown = S.credit;
+    // a counting win lands in WIN first, then the balance rolls up
+    else if (balShown < S.credit && !G.Overlay.counting()) { balShown += Math.max(0.01, (S.credit - balShown) * Math.min(1, dt * 7)); if (balShown >= S.credit - 1e-9) balShown = S.credit; }
+    return balShown === S.credit ? G.money(S.credit) : G.money(balShown, G.countPlaces());
+  }
+  // WIN: the live tumble count during a spin, the last win (or the feature's total) after it
+  function winText() {
+    const c = G.Overlay.counting();
+    if (c) return G.countMoney(c.shown, c.to);
+    if (S.busy && S.tumbleShown > 0) return G.countMoney(S.tumbleShown, countTo());
+    if (S.inFS && S.fsTotal > 0) return G.money(S.fsTotal);
+    return S.winDisplay > 0 ? G.money(S.winDisplay) : G.money(0);
+  }
+  const winLive = () => (S.busy && S.tumbleShown > 0) || S.winDisplay > 0 || (S.inFS && S.fsTotal > 0);
+  // the toast lane: messages and hints only, never money
+  function toastText() {
+    const age = G.clock.real - S.messageT;
+    if (S.message && age <= 3 && !S.message.startsWith(T('win') + ' ')) return S.message;
+    if (S.inFS || S.busy) return S.busy && !S.inFS && !S.tumbleShown ? T('goodLuck') : '';
+    return G.mode === 'replay' ? T('replay') : T('idle');
+  }
+
   H.drawBottom = ctx => {
-    const L = G.L, bb = L.bottom, P = L.portrait, W = G.W;
-    const g = ctx.createLinearGradient(0, bb.y, 0, bb.y + bb.h);
-    g.addColorStop(0, 'rgba(22,10,44,.94)'); g.addColorStop(1, 'rgba(6,2,14,.98)');
-    ctx.fillStyle = g; ctx.fillRect(bb.x, bb.y, bb.w, bb.h);
-    const lg = ctx.createLinearGradient(0, 0, W, 0);
-    lg.addColorStop(0, 'rgba(232,181,74,0)'); lg.addColorStop(0.5, 'rgba(232,181,74,.9)'); lg.addColorStop(1, 'rgba(232,181,74,0)');
-    ctx.fillStyle = lg; ctx.fillRect(0, bb.y, W, 1.5);
+    const L = G.L, bb = L.bottom, P = L.portrait;
+    if (!barC || barC.w !== bb.w || barC.h !== bb.h) barC = { w: bb.w, h: bb.h, c: bakeBar(bb.w, bb.h) };
+    ctx.drawImage(barC.c, bb.x, bb.y, bb.w, bb.h);
+    if (S.mood > 0.01) { ctx.fillStyle = `rgba(255,140,40,${0.05 * S.mood})`; ctx.fillRect(bb.x, bb.y, bb.w, bb.h); }    // the storm warms the console
     if (L.compact) drawBottomCompact(ctx, bb); else if (P) drawBottomPortrait(ctx, bb); else drawBottomLandscape(ctx, bb);
+    drawChip(ctx);
   };
 
+  // struck icons: warm white at rest, gold only while their thing is on
   function iconButton(ctx, id, name, cx, cy, s, onClick, opts) {
     opts = opts || {};
-    const a = G.button(id, cx - s * 0.75, cy - s * 0.75, s * 1.5, s * 1.5, onClick, { disabled: opts.disabled, label: opts.label || id });
-    ctx.save(); ctx.globalAlpha = opts.disabled ? 0.4 : 1;
-    if (a.h > 0.02 || opts.on) {
-      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.max(a.h * 0.7, opts.on ? 0.55 : 0);
-      ctx.drawImage(FX.glowSprite(opts.on ? '#ffb02e' : '#a57bff'), cx - s, cy - s, s * 2, s * 2);
-      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = opts.disabled ? 0.4 : 1;
+    const a = G.button(id, cx - s * 0.75, cy - s * 0.75, s * 1.5, s * 1.5, onClick, { disabled: opts.disabled, label: opts.label || id, reason: opts.reason });
+    ctx.save();
+    if (opts.disabled) ctx.globalAlpha = 0.38;
+    const col = opts.on ? '#f2c95a' : a.h > 0.3 ? '#ffffff' : TXT;
+    const sz = s * (1 - G.clamp(a.p, 0, 1) * 0.08);
+    if (opts.on) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.28; ctx.drawImage(FX.glowSprite('#f2c95a'), cx - s * 0.8, cy - s * 0.8, s * 1.6, s * 1.6); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; }
+    H.icon(ctx, name, cx, cy + G.clamp(a.p, 0, 1), sz, col);
+    ctx.restore();
+  }
+  function roundBtn(ctx, id, name, cx, cy, r, onClick, disabled, label, reason) {
+    const a = G.button(id, cx - r, cy - r, r * 2, r * 2, onClick, { shape: 'circle', disabled, label, reason });
+    const rr = { x: cx - r, y: cy - r, w: r * 2, h: r * 2 };
+    ctx.save(); sink(ctx, rr, a);
+    plateButton(ctx, rr, r, 'disc', a, disabled);
+    H.icon(ctx, name, cx, cy, r * 1.0, disabled ? 'rgba(185,182,211,.45)' : TXT);
+    ctx.restore();
+  }
+
+  /* ---- the Spin button: the one loud element ----
+   * A knurled gold ring round an enamel dome (violet at dusk, amber in the
+   * storm). The dome sinks under a press, the arrows cock back, spin while the
+   * reels run and settle with a small overshoot. During free spins and
+   * autoplay a ring of ticks counts down; with a round running (where a slam
+   * is allowed) it reads STOP. Only this button breathes. */
+  function bakeSpin(R, mood) {
+    const M = G.Mat, pad = Math.ceil(R * 0.25), s = R * 2 + pad * 2, o = G.offscreen(s, s), x = o.x, c = s / 2, d = 1 / G.DPR;
+    const ring = new Path2D(); ring.arc(c, c, R, 0, Math.PI * 2);
+    M.shadowOnly(x, k => k.fill(ring), R * 0.18, 0, R * 0.08, 'rgba(0,0,0,.6)');
+    x.fillStyle = M.goldRoundRadial(x, c, c, R * 0.82, R, true); x.fill(ring);
+    if (M.lod.knurl(R * G.DPR)) {     // knurling: fine ticks round the outer edge
+      x.save(); x.translate(c, c);
+      for (let k = 0; k < 96; k++) {
+        const a = (k / 96) * Math.PI * 2, lit = 0.5 + 0.5 * (Math.cos(a) * M.LIGHT.x + Math.sin(a) * M.LIGHT.y);
+        x.strokeStyle = `rgba(${lit > 0.5 ? '255,246,210' : '42,20,4'},${0.25 + Math.abs(lit - 0.5) * 0.5})`; x.lineWidth = Math.max(d, R * 0.012);
+        x.beginPath(); x.moveTo(Math.cos(a) * R * 0.9, Math.sin(a) * R * 0.9); x.lineTo(Math.cos(a) * R * 0.985, Math.sin(a) * R * 0.985); x.stroke();
+      }
+      x.restore();
     }
-    H.icon(ctx, name, cx, cy, s * (1 - a.p * 0.1), opts.on ? '#ffe08a' : '#e9c46a');
-    ctx.restore();
+    x.lineWidth = d * 1.2; x.strokeStyle = '#2a1404'; x.stroke(ring);
+    // the enamel dome, its bezel and a clear-coat reflection
+    const dome = new Path2D(); dome.arc(c, c, R * 0.84, 0, Math.PI * 2);
+    M.innerShadow(x, (() => { const p = new Path2D(); p.arc(c, c, R * 0.86, 0, Math.PI * 2); return p; })(), R * 0.05, 0, R * 0.02, 'rgba(0,0,0,.8)', [c - R, c - R, R * 2, R * 2]);
+    const dg = x.createRadialGradient(c - R * 0.25, c - R * 0.35, R * 0.06, c, c, R * 0.86);
+    if (mood) { dg.addColorStop(0, '#ffd77a'); dg.addColorStop(0.5, '#e08a1e'); dg.addColorStop(1, '#6e2a04'); }
+    else { dg.addColorStop(0, '#9a60ee'); dg.addColorStop(0.5, '#5a24aa'); dg.addColorStop(1, '#1c0742'); }
+    x.fillStyle = dg; x.fill(dome);
+    x.save(); x.clip(dome);
+    M.texture(x, 'grain', 0.03, 'overlay', false, [c - R, c - R, R * 2, R * 2]);
+    x.globalCompositeOperation = 'lighter';
+    const wr = x.createLinearGradient(0, c - R * 0.8, 0, c - R * 0.15);
+    wr.addColorStop(0, 'rgba(255,255,255,.2)'); wr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = wr; x.beginPath(); x.ellipse(c - R * 0.05, c - R * 0.45, R * 0.56, R * 0.3, -0.15, 0, Math.PI * 2); x.fill();
+    const cg = x.createRadialGradient(c, c + R * 0.85, 0, c, c + R * 0.85, R * 0.7);
+    cg.addColorStop(0, mood ? 'rgba(255,200,120,.16)' : 'rgba(200,150,255,.14)'); cg.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = cg; x.fillRect(c - R, c - R, R * 2, R * 2);
+    x.restore();
+    x.lineWidth = d * 1.2; x.strokeStyle = 'rgba(42,20,4,.9)'; x.stroke(dome);
+    return { c: o.c, s };
   }
-  function roundBtn(ctx, id, name, cx, cy, r, onClick, disabled, label) {
-    const a = G.button(id, cx - r, cy - r, r * 2, r * 2, onClick, { shape: 'circle', disabled, label });
-    ctx.save(); ctx.globalAlpha = disabled ? 0.4 : 1;
-    const rr = r * (1 - a.p * 0.08);
-    const g = ctx.createRadialGradient(cx, cy - rr * 0.4, rr * 0.1, cx, cy, rr);
-    g.addColorStop(0, '#3a2160'); g.addColorStop(1, '#140828');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = a.h > 0.1 ? '#ffe9a0' : '#c8963a'; ctx.stroke();
-    H.icon(ctx, name, cx, cy, rr * 1.0, '#ffe7a6');
-    ctx.restore();
-  }
+  const spinRot = { x: 0, v: 0 };
+  let spinRotT = 0;
   function spinButton(ctx, cx, cy, R) {
     const canSpin = !S.busy && !S.inFS && S.auto <= 0;
     const a = G.button('spin', cx - R, cy - R, R * 2, R * 2, () => G.Game.spinPressed(), { shape: 'circle', label: G.mode === 'replay' ? T('replayPlay') : 'Spin' });
-    const t = G.clock.real;
-    const rr = R * (1 - a.p * 0.06 + a.h * 0.03);
+    const t = G.clock.real, dt = G.clamp(t - spinRotT, 0, 0.05); spinRotT = t;
+    H.spinC = { x: cx, y: cy };          // the free-spins card collapses into it
+    const key = Math.round(R * 4) + '|' + G.DPR;
+    let sp = spinC.get(key);
+    if (!sp) { sp = [bakeSpin(R, 0), bakeSpin(R, 1)]; spinC.set(key, sp); }
     ctx.save();
     // breathing halo when idle
     if (canSpin) {
       const pl = 0.5 + 0.5 * Math.sin(t * 2.6);
-      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + pl * 0.35;
-      const gs = R * 1.8; ctx.drawImage(FX.glowSprite('#ffb02e'), cx - gs, cy - gs, gs * 2, gs * 2);
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.25 + pl * 0.3;
+      const gs = R * 1.8; ctx.drawImage(FX.glowSprite(S.mood > 0.5 ? '#ffb02e' : '#b07cff'), cx - gs, cy - gs, gs * 2, gs * 2);
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     }
-    // gold ring
-    const ring = ctx.createLinearGradient(cx, cy - rr, cx, cy + rr);
-    ring.addColorStop(0, '#fff2b8'); ring.addColorStop(0.5, '#c88d22'); ring.addColorStop(1, '#ffe08a');
-    ctx.fillStyle = ring; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 7); ctx.fill();
-    const face = ctx.createRadialGradient(cx - rr * 0.2, cy - rr * 0.35, rr * 0.1, cx, cy, rr * 0.88);
-    face.addColorStop(0, S.inFS ? '#ffcf5a' : '#7b3fd0'); face.addColorStop(1, S.inFS ? '#8a3a06' : '#240a52');
-    ctx.fillStyle = face; ctx.beginPath(); ctx.arc(cx, cy, rr * 0.86, 0, 7); ctx.fill();
-    if (S.auto > 0 || S.inFS) {
-      const n = S.inFS ? S.fsLeft : S.auto;
-      G.text(ctx, S.inFS ? T('free') : T('auto'), cx, cy - rr * 0.3, rr * 0.24, '#ffe9b0', { weight: 800 });
-      G.goldText(ctx, n === Infinity ? '∞' : String(n), cx, cy + rr * 0.12, rr * 0.55, { display: false, weight: 800 });
-      if (!S.inFS) G.text(ctx, T('stop'), cx, cy + rr * 0.55, rr * 0.2, '#ffffff', { weight: 800 });
+    const p = G.clamp(a.p, -0.2, 1), hs = 1 + a.h * 0.02;
+    ctx.translate(cx, cy); ctx.scale(hs, hs); ctx.translate(-cx, -cy);
+    const ds = sp[0].s;
+    ctx.drawImage(sp[0].c, cx - ds / 2, cy - ds / 2, ds, ds);
+    if (S.mood > 0.01) { ctx.globalAlpha = S.mood; ctx.drawImage(sp[1].c, cx - ds / 2, cy - ds / 2, ds, ds); ctx.globalAlpha = 1; }
+    // the dome sinks under a press
+    if (p > 0.01) { ctx.fillStyle = `rgba(0,0,0,${0.22 * p})`; ctx.beginPath(); ctx.arc(cx, cy + p, R * 0.84, 0, 7); ctx.fill(); }
+    const rr = R * (1 - Math.max(0, p) * 0.04);
+    const counting = S.auto > 0 || S.inFS;
+    if (counting) {
+      const n = S.inFS ? S.fsLeft : S.auto, total = S.inFS ? Math.max(S.fsAward, 1) : null;
+      // the tick ring: one tick per free spin still to come
+      if (total) {
+        const N = Math.min(total, 40);
+        for (let k = 0; k < N; k++) {
+          const ang = -Math.PI / 2 + (k / N) * Math.PI * 2, on = k < Math.round(n * N / total);
+          ctx.strokeStyle = on ? '#fff3cf' : 'rgba(255,243,207,.2)'; ctx.lineWidth = Math.max(1.5, rr * 0.035);
+          ctx.beginPath(); ctx.moveTo(cx + Math.cos(ang) * rr * 0.72, cy + Math.sin(ang) * rr * 0.72); ctx.lineTo(cx + Math.cos(ang) * rr * 0.8, cy + Math.sin(ang) * rr * 0.8); ctx.stroke();
+        }
+      }
+      G.text(ctx, S.inFS ? T('free') : T('auto'), cx, cy - rr * 0.3, floor(rr * 0.22), '#ffe9b0', { weight: 800 });
+      G.goldText(ctx, n === Infinity ? '∞' : String(n), cx, cy + rr * 0.1, rr * 0.5, { display: false, weight: 800, tabular: true });
+      if (!S.inFS) G.text(ctx, T('stop'), cx, cy + rr * 0.5, floor(rr * 0.19), TXT, { weight: 800 });
     } else {
-      // two curved arrows, spinning while the reels are busy
-      const rot = S.busy ? G.clock.real * 9 : Math.sin(t * 1.3) * 0.08;
-      ctx.translate(cx, cy); ctx.rotate(rot);
+      // the arrows: cocked by a press, running with the reels, settling with a little overshoot
+      const pressed = G.pressId === 'spin' && canSpin;
+      if (S.busy) { spinRot.x += dt * (S.slam ? 16 : 9); spinRot.v = 9; }
+      else G.spring(spinRot, Math.round(spinRot.x / Math.PI) * Math.PI - (pressed ? 0.35 : 0), dt, G.SPRING.KNOB);
+      const sway = S.busy ? 0 : Math.sin(t * 1.3) * 0.05;
+      ctx.save(); ctx.translate(cx, cy + Math.max(0, p)); ctx.rotate(spinRot.x + sway);
       ctx.strokeStyle = '#fff3cf'; ctx.fillStyle = '#fff3cf'; ctx.lineWidth = rr * 0.12; ctx.lineCap = 'round';
       for (let k = 0; k < 2; k++) {
         ctx.rotate(Math.PI);
-        ctx.beginPath(); ctx.arc(0, 0, rr * 0.48, 0.25, Math.PI - 0.55); ctx.stroke();
-        const ex = Math.cos(Math.PI - 0.55) * rr * 0.48, ey = Math.sin(Math.PI - 0.55) * rr * 0.48;
+        ctx.beginPath(); ctx.arc(0, 0, rr * 0.46, 0.25, Math.PI - 0.55); ctx.stroke();
+        const ex = Math.cos(Math.PI - 0.55) * rr * 0.46, ey = Math.sin(Math.PI - 0.55) * rr * 0.46;
         ctx.beginPath(); ctx.moveTo(ex - rr * 0.2, ey - rr * 0.02); ctx.lineTo(ex + rr * 0.04, ey - rr * 0.22); ctx.lineTo(ex + rr * 0.08, ey + rr * 0.12); ctx.closePath(); ctx.fill();
       }
+      ctx.restore();
+      if (S.busy && !S.slam && !S.charging && G.allow('slam') && !G.L.compact) G.text(ctx, T('stop'), cx, cy + rr * 0.62, floor(rr * 0.17), TXT, { weight: 800 });
     }
     ctx.restore();
-  }
-
-  function moneyBlock(ctx, label, value, x, y, size, align, color, maxW) {
-    G.text(ctx, label, x, y - size * 0.55, size * 0.62, '#a996d6', { weight: 700, align, maxW });
-    G.text(ctx, value, x, y + size * 0.42, size, color || '#ffffff', { weight: 800, align, maxW });
-  }
-
-  function centerMessage(ctx, x, y, maxW, size) {
-    let msg = S.message, col = '#ffe9b0';
-    const age = G.clock.real - S.messageT;
-    if (!msg || age > 3) {
-      if (S.busy && S.tumbleShown > 0) { msg = T('win') + ' ' + G.money(S.tumbleShown, tumblePlaces()); col = '#ffd84a'; }
-      else if (S.winDisplay > 0) { msg = T('win') + ' ' + G.money(S.winDisplay); col = '#ffd84a'; }
-      else if (S.inFS) msg = S.fsTotal > 0 ? T('featureWin') + ' ' + G.money(S.fsTotal) : T('fsLeft', { n: S.fsLeft });
-      else if (S.busy) msg = T('goodLuck');
-      else msg = G.mode === 'replay' ? T('replay') : T('idle');
-    }
-    if (msg.startsWith(T('win') + ' ')) G.goldText(ctx, msg, x, y, size * 1.25, { maxW, display: false, weight: 800 });
-    else G.text(ctx, msg, x, y, size, col, { weight: 800, maxW, display: true });
   }
 
   function drawBottomLandscape(ctx, bb) {
@@ -364,7 +579,7 @@
       G.allow('fullscreen') && ['full', 'full', () => G.UI.fullscreen(), 'Fullscreen'],
     ].filter(Boolean);
     icons.forEach(([id, name, fn, label]) => { iconButton(ctx, id, name, x, cy - bb.h * 0.08, isz, fn, { label }); x += ig; });
-    if (G.mode === 'demo') G.text(ctx, 'FISKCE.COM', pad, bb.y + bb.h - 9, Math.min(11, bb.h * 0.13), 'rgba(233,196,106,.6)', { weight: 700, align: 'left' });
+    if (G.mode === 'demo') G.text(ctx, 'FISKCE.COM', pad, bb.y + bb.h - 9, 11, 'rgba(185,182,211,.55)', { weight: 700, align: 'left' });
     // right cluster: turbo, -, SPIN, +, auto
     const R = G.clamp(bb.h * 0.62, 34, 62), r = R * 0.48;
     let rx = W - pad;
@@ -373,59 +588,66 @@
     const spinX = rx - R; rx = spinX - R - pad * 0.7;
     const minusX = rx - r; rx = minusX - r - pad * 0.8;
     const turboX = rx - r; rx = turboX - r - pad;
-    const by = cy - bb.h * 0.06, sy = bb.y + bb.h * 0.42 - R * 0.18;
+    const by = cy - bb.h * 0.06, sy = bb.y + bb.h * 0.42 - R * 0.18, lab = floor(Math.min(11, bb.h * 0.12));
     betButtons(ctx, minusX, plusX, by, r);
     if (G.allow('turbo')) {
       iconButton(ctx, 'turbo', 'bolt', turboX, by, r * 1.1, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
-      G.text(ctx, T('turbo'), turboX, by + r * 1.25, Math.min(10, bb.h * 0.12), '#a996d6', { weight: 700 });
+      G.text(ctx, T('turbo'), turboX, by + r * 1.25, lab, TXT2, { weight: 700 });
     }
     if (G.allow('auto')) {
-      iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, by, r * 1.1, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
-      G.text(ctx, T('auto'), autoX, by + r * 1.25, Math.min(10, bb.h * 0.12), '#a996d6', { weight: 700 });
+      iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, by, r * 1.1, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay', reason: 'reasonFS' });
+      G.text(ctx, T('auto'), autoX, by + r * 1.25, lab, TXT2, { weight: 700 });
     }
     spinButton(ctx, spinX, sy, R);
-    H.autoAnchor = { x: autoX, y: bb.y };
-    // credit / bet and the centre message
+    // BALANCE · WIN · BET in recessed readouts, then the toast lane in what is left
     const left = x + pad * 0.2, right = rx;
-    const fsz = G.clamp(bb.h * 0.2, 12, 20);
-    const avail = right - left;
-    const colW = Math.max(140, fsz * 8.5);
-    if (avail > 260) {
-      let mx = left;
-      if (G.allow('balance')) { moneyBlock(ctx, T('balance'), G.money(S.credit), mx, cy - bb.h * 0.04, fsz, 'left', null, colW - 10); mx += colW; }
-      moneyBlock(ctx, T('bet'), G.money(G.baseBet()), mx, cy - bb.h * 0.04, fsz, 'left', '#ffd36b', fsz * 6); mx += fsz * 6;
-      centerMessage(ctx, (mx + right) / 2, cy - bb.h * 0.04, right - mx - 10, fsz * 0.95);
-    } else if (G.allow('balance')) {
-      moneyBlock(ctx, T('balance'), G.money(S.credit), left, cy - bb.h * 0.04, fsz * 0.9, 'left', null, avail - 10);
-    }
-    drawAutoMenu(ctx);
+    const fsz = G.clamp(bb.h * 0.2, 12, 19), rh = Math.min(bb.h * 0.72, fsz * 3.1), ry = cy - rh / 2 - bb.h * 0.03, gap = pad * 0.6;
+    const wBal = Math.max(118, fsz * 8.2), wWin = Math.max(100, fsz * 7), wBet = Math.max(96, fsz * 6.4);
+    let mx = left;
+    const fit = w => mx + w <= right;
+    if (G.allow('balance') && fit(wBal)) { readout(ctx, { x: mx, y: ry, w: wBal, h: rh }, T('balance'), balance(), TXT, fsz, 'left'); mx += wBal + gap; }
+    if (fit(wWin + wBet + gap)) { readout(ctx, { x: mx, y: ry, w: wWin, h: rh }, T('win'), winText(), winLive() ? '#ffd36b' : TXT2, fsz, 'left'); mx += wWin + gap; }
+    if (fit(wBet)) { readout(ctx, { x: mx, y: ry, w: wBet, h: rh }, T('bet'), G.money(G.spinCost()), TXT, fsz, 'left', betPress()); mx += wBet + gap; }
+    const msg = toastText();
+    if (msg && right - mx > 90) G.text(ctx, msg, (mx + right) / 2, cy - bb.h * 0.04, fsz * 0.95, TXT, { weight: 800, maxW: right - mx - 12, display: true });
   }
 
   function drawBottomPortrait(ctx, bb) {
     const W = G.W, pad = G.L.pad * 1.2;
-    const row1 = bb.y + bb.h * 0.2, row2 = bb.y + bb.h * 0.64;
-    const fsz = G.clamp(bb.h * 0.13, 11, 16);
-    if (G.allow('balance')) moneyBlock(ctx, T('balance'), G.money(S.credit), pad, row1, fsz, 'left', null, W * 0.28);
-    moneyBlock(ctx, T('bet'), G.money(G.baseBet()), W - pad, row1, fsz, 'right', '#ffd36b', W * 0.26);
-    centerMessage(ctx, W / 2, row1, W * 0.4, fsz * 0.95);
-    const R = G.clamp(Math.min(bb.h * 0.36, W * 0.12), 30, 54), r = R * 0.52;
+    const fsz = G.clamp(bb.h * 0.12, 12, 16), rh = Math.min(bb.h * 0.36, fsz * 2.9), ry = bb.y + bb.h * 0.06, gap = pad * 0.5;
+    const cols = G.allow('balance') ? 3 : 2, cw = (W - pad * 2 - gap * (cols - 1)) / cols;
+    let mx = pad;
+    if (G.allow('balance')) { readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('balance'), balance(), TXT, fsz, 'center'); mx += cw + gap; }
+    readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('win'), winText(), winLive() ? '#ffd36b' : TXT2, fsz, 'center'); mx += cw + gap;
+    readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('bet'), G.money(G.spinCost()), TXT, fsz, 'center', betPress());
+    const row2 = bb.y + bb.h * 0.68;
+    const R = G.clamp(Math.min(bb.h * 0.32, W * 0.12), 30, 54), r = R * 0.52;
     const isz = G.clamp(r * 0.95, 16, 26);
     spinButton(ctx, W / 2, row2, R);
     betButtons(ctx, W / 2 - R - r - pad * 0.7, W / 2 + R + r + pad * 0.7, row2, r);
     iconButton(ctx, 'menu', 'menu', pad + isz * 0.7, row2, isz, () => G.UI.open('menu'), { label: 'Menu' });
     iconButton(ctx, 'sound', G.settings.sfx || G.settings.music ? 'sound' : 'mute', pad + isz * 2.4, row2, isz, () => G.Game.toggleSound(), { label: 'Sound' });
-    if (G.allow('auto')) iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', W - pad - isz * 0.7, row2, isz, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
+    if (G.allow('auto')) iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', W - pad - isz * 0.7, row2, isz, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay', reason: 'reasonFS' });
     if (G.allow('turbo')) iconButton(ctx, 'turbo', 'bolt', W - pad - isz * 2.4, row2, isz, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
-    H.autoAnchor = { x: W - pad - isz * 0.7, y: row2 - isz };
-    drawAutoMenu(ctx);
+    // the toast lane takes the hint line under the board for a moment (messages only; the readouts hold the money)
+    const age = G.clock.real - S.messageT;
+    H.toasting = !!(S.message && age <= 3 && !S.message.startsWith(T('win') + ' '));
+    if (H.toasting) {
+      const size = 13, a = Math.min(1, (3 - age) / 0.3);
+      ctx.save(); ctx.globalAlpha = a; ctx.font = G.font(size, 800, true);
+      const tw = Math.min(W - 24, ctx.measureText(S.message).width + size * 2), ty = G.L.hintY;
+      G.roundRect(ctx, W / 2 - tw / 2, ty - size * 0.9, tw, size * 1.8, size * 0.9); ctx.fillStyle = 'rgba(10,12,22,.88)'; ctx.fill();
+      G.text(ctx, S.message, W / 2, ty, size, TXT, { weight: 800, maxW: tw - size, display: true });
+      ctx.restore();
+    }
   }
 
-  // − / + bet buttons (not in a replay)
+  // − / + bet buttons (not in a replay); at either end the button goes unlit and says why
   function betButtons(ctx, minusX, plusX, y, r) {
     if (!G.allow('bet')) return;
-    const lock = S.busy || S.inFS || S.auto > 0;
-    roundBtn(ctx, 'betDown', 'minus', minusX, y, r, () => G.Game.bet(-1), lock || S.betIndex === 0, 'Lower bet');
-    roundBtn(ctx, 'betUp', 'plus', plusX, y, r, () => G.Game.bet(1), lock || S.betIndex === G.BET_STEPS.length - 1, 'Raise bet');
+    const why = S.inFS ? 'reasonFS' : S.auto > 0 ? 'reasonAuto' : S.busy ? 'reasonRound' : null;
+    roundBtn(ctx, 'betDown', 'minus', minusX, y, r, () => G.Game.bet(-1), !!why || S.betIndex === 0, 'Lower bet', why || 'reasonMinBet');
+    roundBtn(ctx, 'betUp', 'plus', plusX, y, r, () => G.Game.bet(1), !!why || S.betIndex === G.BET_STEPS.length - 1, 'Raise bet', why || 'reasonMaxBet');
   }
 
   // 400x225 and other short windows: everything on one slim row
@@ -443,50 +665,29 @@
     const turboX = G.allow('turbo') ? rx - r : null; if (turboX) rx = turboX - r - g;
     betButtons(ctx, minusX, plusX, cy, r);
     if (turboX) iconButton(ctx, 'turbo', 'bolt', turboX, cy, r * 1.1, () => G.Game.toggleTurbo(), { on: G.settings.turbo, label: 'Turbo' });
-    if (autoX) iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, cy, r * 1.1, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay' });
+    if (autoX) iconButton(ctx, 'auto', S.auto > 0 ? 'stop' : 'auto', autoX, cy, r * 1.1, () => G.Game.autoPressed(), { on: S.auto > 0, disabled: S.inFS, label: 'Autoplay', reason: 'reasonFS' });
     spinButton(ctx, spinX, cy, R);
-    H.autoAnchor = { x: autoX || spinX, y: bb.y };
-    // balance and bet on two lines, then the message in what is left
-    const left = pad + isz * 3.4, fsz = G.clamp(bb.h * 0.2, 8, 12), colW = Math.min(110, (rx - left) * 0.55);
+    // BALANCE and BET on two lines, then WIN (or a message) in what is left
+    const left = pad + isz * 3.4, fsz = G.clamp(bb.h * 0.2, 8, 12), colW = Math.min(118, (rx - left) * 0.55);
     const vy1 = cy - fsz * 0.65, vy2 = cy + fsz * 0.75;
-    if (G.allow('balance')) G.text(ctx, T('balance') + ' ' + G.money(S.credit), left, vy1, fsz, '#ffffff', { weight: 800, align: 'left', maxW: colW });
-    G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), left, G.allow('balance') ? vy2 : cy, fsz, '#ffd36b', { weight: 800, align: 'left', maxW: colW });
+    if (G.allow('balance')) G.text(ctx, T('balance') + ' ' + balance(), left, vy1, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true });
+    const bp = betPress(), byy = G.allow('balance') ? vy2 : cy;
+    if (bp) G.button(bp.id, left, byy - fsz * 0.8, colW, fsz * 1.6, bp.fn, { disabled: bp.disabled, label: bp.label, reason: bp.reason });
+    G.text(ctx, T('bet') + ' ' + G.money(G.spinCost()), left, byy, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true });
     const mx = left + colW + 6;
-    if (rx - mx > 50) centerMessage(ctx, (mx + rx) / 2, cy, rx - mx - 6, fsz * 0.95);
-    drawAutoMenu(ctx);
-  }
-
-  function drawAutoMenu(ctx) {
-    if (!S.autoMenu || S.auto > 0) return;
-    const opts = [10, 25, 50, 100, Infinity];
-    const bw = G.clamp(G.W * 0.07, 64, 92), gap = 6;
-    // fit above the button even in short windows (400x225)
-    const room = H.autoAnchor.y - 20;
-    const bh = Math.max(16, Math.min(G.clamp(G.H * 0.05, 34, 46), (room - gap * opts.length) / (opts.length + 0.9)));
-    const h = opts.length * (bh + gap) + bh * 0.9;
-    const x = G.clamp(H.autoAnchor.x - bw / 2, 8, G.W - bw - 8), y = H.autoAnchor.y - h - 14;
-    G.roundRect(ctx, x - 8, y - 8, bw + 16, h + 16, 12);
-    ctx.fillStyle = 'rgba(20,8,40,.97)'; ctx.fill(); ctx.strokeStyle = '#e8b54a'; ctx.lineWidth = 1.5; ctx.stroke();
-    G.text(ctx, 'AUTOPLAY', x + bw / 2, y + bh * 0.35, Math.min(13, bh * 0.34), '#ffd36b', { weight: 800 });
-    let yy = y + bh * 0.85;
-    opts.forEach(n => {
-      const a = G.button('auto' + n, x, yy, bw, bh, () => G.Game.startAuto(n), { label: 'Autoplay ' + n });
-      G.roundRect(ctx, x, yy, bw, bh, 8);
-      const g = ctx.createLinearGradient(0, yy, 0, yy + bh);
-      g.addColorStop(0, a.h > 0.1 ? '#7b3fd0' : '#4a2390'); g.addColorStop(1, '#22094a');
-      ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#c8963a'; ctx.lineWidth = 1; ctx.stroke();
-      G.text(ctx, n === Infinity ? '∞' : String(n), x + bw / 2, yy + bh / 2, bh * 0.45, '#ffffff', { weight: 800 });
-      yy += bh + gap;
-    });
+    if (rx - mx > 50) {
+      if (winLive()) G.text(ctx, T('win') + ' ' + winText(), (mx + rx) / 2, cy, fsz * 1.1, '#ffd36b', { weight: 800, maxW: rx - mx - 6, tabular: true });
+      else { const m = toastText(); if (m) G.text(ctx, m, (mx + rx) / 2, cy, fsz * 0.95, TXT, { weight: 800, maxW: rx - mx - 6, display: true }); }
+    }
   }
 
   // fairness commitment under the board (click opens the verifier)
   H.drawHint = ctx => {
     const L = G.L;
-    if (!window.ProvablyFair || !G.allow('fair') || L.noHint) return;
+    if (!window.ProvablyFair || !G.allow('fair') || L.noHint || (L.portrait && H.toasting)) return;
     const h = ProvablyFair.serverHash;
     const text = `PROVABLY FAIR · ${h.slice(0, 10)}…${h.slice(-6)} · #${ProvablyFair.nonce}`;
-    const size = G.clamp(L.hintH * 0.36, 9, 12);
+    const size = G.clamp(L.hintH * 0.36, 11, 12);
     ctx.font = G.font(size, 700);
     const tw = Math.min(ctx.measureText(text).width, G.W * 0.9);
     const a = G.button('fair', G.W / 2 - tw / 2 - 10, L.hintY - size, tw + 20, size * 2, () => G.UI.open('fair'), { label: 'Provably fair details' });

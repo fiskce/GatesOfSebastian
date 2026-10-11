@@ -8,6 +8,10 @@
 @font-face { font-family: "Outfit"; font-weight: 800; font-display: swap; src: url(../assets/fonts/outfit-latin-800-normal.woff2) format("woff2"); }
 
 :root {
+  /* v10 chrome tokens: machined ink steel, warm-white text, emerald for ON (not Stake green) */
+  --ink-0: #0A0C16; --ink-1: #12152A; --ink-2: #1B1F3A; --ink-3: #272C4D;
+  --text-1: #F4F1EA; --text-2: #B9B6D3; --emerald: #2FD27A;
+  --r-s: 4px; --r-m: 8px; --r-l: 12px;
   --ink: #0b0520;
   --panel: #1a0b36;
   --panel-2: #0f0622;
@@ -23,9 +27,15 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; background: var(--ink); overflow: hidden; }
+html, body { height: 100%; background: var(--ink-0); overflow: hidden; }
 body { font-family: var(--ui); color: var(--text); -webkit-tap-highlight-color: transparent; }
-#game { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: manipulation; outline: none; }
+/* the canvas keeps clear of notches and the home indicator; the page's ink shows in the insets */
+/* (a canvas is a replaced element: left + right alone would not stretch it, so its size is explicit) */
+#game { display: block; position: fixed; left: env(safe-area-inset-left, 0px); top: env(safe-area-inset-top, 0px);
+  width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  touch-action: manipulation; outline: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ---------- brand lockup ---------- */
@@ -156,6 +166,7 @@ body { font-family: var(--ui); color: var(--text); -webkit-tap-highlight-color: 
 @media (max-width: 560px) { .paytable { grid-template-columns: repeat(2, 1fr); } .card { padding: 18px 14px 14px; } }
 
 .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 12px 0; font-size: 15px; }
+.row.sub { margin-top: -4px; padding-left: 14px; font-size: 13px; color: var(--muted, #b9b6d3); }
 .row small { color: var(--muted); font-size: 12px; }
 .row.inline { justify-content: stretch; }
 .row.inline input[type=text] { flex: 1; }
@@ -261,3 +272,58 @@ table.stats td:first-child { color: var(--muted); }
   .splash-seb, .play-btn, .feature { animation: none; }
   .card, .modal { animation: none; }
 }
+
+/* ---------- v10 "Forged Storm": DOM cards in the same machined ink steel as the canvas chrome ---------- */
+:root { --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .045 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+.modal { background: rgba(5, 6, 12, .66); }
+.card { position: relative; border-radius: var(--r-l); color: var(--text-1); border: 1px solid var(--ink-3);
+  background: var(--grain), linear-gradient(180deg, var(--ink-2), var(--ink-1));
+  box-shadow: inset 0 1px 0 rgba(120, 132, 210, .35), inset 0 0 0 3px var(--ink-1), inset 0 0 0 4px rgba(242, 201, 90, .42), 0 24px 60px rgba(0, 0, 0, .55);
+  animation: pop .22s cubic-bezier(.2, .9, .3, 1.05); }
+.card h2 { color: var(--text-1); font-size: 22px; padding: 0 40px; }
+.card h3 { color: var(--text-2); text-transform: uppercase; letter-spacing: .1em; font-size: 13px; }
+.card p { color: #d6d3e6; } .card b { color: var(--text-1); }
+.faint, .note { color: var(--text-2) !important; }
+.x-close { position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text-2); z-index: 3; }
+.x-close svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; fill: none; }
+.x-close:hover { color: var(--text-1); background: rgba(255, 255, 255, .06); }
+button.primary { color: var(--text-1); border: 1px solid #4a5390; background: linear-gradient(#343c72, #232850);
+  box-shadow: inset 0 1px 0 rgba(160, 170, 240, .45), inset 0 0 0 2px #262b55, inset 0 0 0 3px rgba(242, 201, 90, .55); min-height: 44px; }
+button.ghost { color: var(--text-2); border: 1px solid var(--ink-3); min-height: 44px; }
+button.small { color: var(--text-1); background: var(--ink-3); }
+#buyConfirm { color: #fff3e8; border: 1px solid #f2c95a; background: radial-gradient(circle at 30% 20%, #9a2234, #7A1322 45%, #3A0710);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 210, .35); }
+.menu-item { color: var(--text-1); background: var(--ink-1); border: 1px solid var(--ink-3); min-height: 44px; }
+.big-price { color: var(--gold-hi); }
+.switch { background: var(--ink-0); border: 1px solid var(--ink-3); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .6); }
+.switch::after { background: radial-gradient(circle at 35% 30%, #f2f4fb, #a9afc6 55%, #4c5270); }
+.switch:checked { background: var(--emerald); border-color: #1f9a58; }
+input[type=range] { accent-color: var(--emerald); }
+select, input[type=text], .fair-box, .card code { background: var(--ink-0); border-color: var(--ink-3); }
+.table-wrap { border-color: var(--ink-3); } .history th { background: var(--ink-2); color: var(--text-2); } .history td { border-top-color: rgba(39, 44, 77, .8); }
+.pt-cell { background: rgba(255, 255, 255, .03); border-color: var(--ink-3); }
+.facts b { color: var(--text-1); } .facts div { border-bottom-color: rgba(185, 182, 211, .18); }
+dl.controls dt { color: var(--text-1); }
+.lead { font-weight: 700; color: var(--text-2) !important; margin-bottom: 6px !important; }
+/* rules in tabs */
+.tabs { display: flex; gap: 4px; padding: 4px; margin: 0 0 12px; border-radius: 10px; background: var(--ink-0); position: sticky; top: -22px; z-index: 2;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, .5); }
+.tab { flex: 1; min-height: 40px; padding: 8px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-weight: 800; font-size: 13px; letter-spacing: .03em; }
+.tab[aria-selected="true"] { background: var(--ink-3); color: var(--text-1); box-shadow: inset 0 1px 0 rgba(120, 132, 210, .45), inset 0 -2px 0 rgba(242, 201, 90, .6); }
+/* autoplay: rounds as one segmented control */
+.seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 4px 0 14px; }
+.seg button, .bet-grid button { min-height: 44px; border-radius: var(--r-m); border: 1px solid var(--ink-3); background: var(--ink-1); color: var(--text-1);
+  font-weight: 800; font-variant-numeric: tabular-nums; box-shadow: inset 0 1px 0 rgba(120, 132, 210, .25); }
+.seg button[aria-pressed="true"], .bet-grid button[aria-pressed="true"] { background: var(--ink-3); color: var(--gold-hi); box-shadow: inset 0 0 0 1px rgba(242, 201, 90, .7), inset 0 1px 0 rgba(160, 170, 240, .45); }
+.bet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; margin: 6px 0 4px; }
+/* phones held upright: cards rise from the bottom as sheets */
+@keyframes sheet { from { transform: translateY(48px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 600px) and (orientation: portrait) {
+  .modal { align-items: flex-end; padding: 0; }
+  .card, .card.narrow { width: 100%; max-height: 86vh; border-radius: 16px 16px 0 0; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    animation: sheet .26s cubic-bezier(.2, .9, .3, 1); }
+  .card::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 4px; background: var(--ink-3); margin: -8px auto 10px; }
+}
+@media (max-height: 420px) and (min-aspect-ratio: 1/1) { .tabs { top: -12px; } .tab { min-height: 34px; font-size: 12px; } .seg { margin: 2px 0 6px; } }
+@media (prefers-reduced-motion: reduce) { .card, .modal { animation: none; } }

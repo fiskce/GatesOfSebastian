@@ -8,7 +8,10 @@
   const PF = window.ProvablyFair;
   const UI = G.UI = {};
   const $ = id => document.getElementById(id);
-  const PANELS = ['info', 'settings', 'fair', 'buy', 'credit', 'menu', 'stats', 'error', 'resume', 'replay'];
+  const PANELS = ['info', 'settings', 'fair', 'buy', 'credit', 'menu', 'stats', 'auto', 'bets', 'error', 'resume', 'replay'];
+  // cards that can be dismissed get an X in the corner (as well as Esc and the backdrop)
+  const CLOSABLE = ['settings', 'fair', 'buy', 'credit', 'menu', 'stats', 'auto', 'bets'];
+  const X = '<button type="button" class="x-close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
   const revealed = {};   // server hash -> revealed seed
   let lastFocus = null, blocking = false, onResume = null;
 
@@ -23,6 +26,9 @@
   UI.open = name => {
     if (blocking) return;
     if (name === 'buy' && (S.busy || S.inFS)) return;
+    if ((name === 'auto' || name === 'bets') && (S.busy || S.inFS || S.auto > 0)) return;
+    if (name === 'auto') syncAuto();
+    if (name === 'bets') renderBets();
     PANELS.forEach(p => { $('m-' + p).hidden = p !== name; });
     lastFocus = document.activeElement;
     if (name === 'fair') renderFair();
@@ -33,7 +39,7 @@
     const card = $('m-' + name).querySelector('.card');
     card.scrollTop = 0;
     card.focus({ preventScroll: true });
-    AudioEngine.play('whoosh', { gain: 0.5, rate: 1.4 });
+    AudioEngine.play('ui.open');
   };
   UI.fullscreen = () => {
     const d = document;
@@ -43,6 +49,8 @@
   UI.sync = () => {
     $('turboToggle').closest('.row').hidden = !G.allow('turbo');
     $('volSlider').value = Math.round(G.settings.volume * 100);
+    $('musicVolSlider').value = Math.round(G.settings.musicVol * 100);
+    $('sfxVolSlider').value = Math.round(G.settings.sfxVol * 100);
     $('musicToggle').checked = G.settings.music;
     $('sfxToggle').checked = G.settings.sfx;
     $('turboToggle').checked = G.settings.turbo;
@@ -96,13 +104,39 @@
     $('errorReload').addEventListener('click', () => location.reload());
     $('resumeGo').addEventListener('click', () => { const go = onResume; onResume = null; UI.closeAll(true); if (go) go(); });
     $('replayGo').addEventListener('click', () => { AudioEngine.resume(); G.Game.startReplay(); });
+    CLOSABLE.forEach(p => $('m-' + p).querySelector('.card').insertAdjacentHTML('afterbegin', X));
     buildRules();
-    document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { AudioEngine.play('click'); UI.closeAll(); }));
-    document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => { AudioEngine.play('click'); UI.open(b.dataset.open); }));
+    // the rules are in tabs; arrow keys move between them
+    $('rulesCard').addEventListener('click', e => { const t = e.target.closest('.tab'); if (t) { AudioEngine.play('ui.press'); showTab(t.dataset.tab); } });
+    $('rulesCard').addEventListener('keydown', e => {
+      const t = e.target.closest('.tab'); if (!t || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+      const tabs = [...$('rulesCard').querySelectorAll('.tab')], i = tabs.indexOf(t), n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      showTab(n.dataset.tab); n.focus(); e.preventDefault();
+    });
+    // autoplay sheet
+    $('autoCount').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; AudioEngine.play('ui.press'); autoCfg().n = b.dataset.n; syncAuto(); G.save(); });
+    $('autoLoss').addEventListener('change', e => { autoCfg().loss = +e.target.value; G.save(); });
+    $('autoWin').addEventListener('change', e => { autoCfg().win = +e.target.value; G.save(); });
+    $('autoFeature').addEventListener('change', e => { autoCfg().feature = e.target.checked; G.save(); });
+    $('autoStart').addEventListener('click', () => {
+      const c = autoCfg(); UI.closeAll();
+      G.Game.startAuto(c.n === 'Infinity' ? Infinity : +c.n, { loss: c.loss, win: c.win, feature: c.feature });
+    });
+    // bet grid
+    $('betGrid').addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      AudioEngine.play('ui.press'); G.Game.setBet(+b.dataset.i); UI.closeAll();
+    });
+    // one sound per press: closing has its own; opening sounds in UI.open
+    document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { AudioEngine.play('ui.close'); UI.closeAll(); }));
+    document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => { UI.open(b.dataset.open); }));
     $('menuFull').addEventListener('click', () => { UI.closeAll(); UI.fullscreen(); });
 
     // settings
     $('volSlider').addEventListener('input', e => { G.settings.volume = e.target.value / 100; G.Game.applySettings(); G.save(); });
+    $('musicVolSlider').addEventListener('input', e => { G.settings.musicVol = e.target.value / 100; G.Game.applySettings(); G.save(); });
+    // the effects slider answers with a press at its new level, so it can be set by ear
+    $('sfxVolSlider').addEventListener('input', e => { G.settings.sfxVol = e.target.value / 100; G.Game.applySettings(); G.save(); AudioEngine.play('ui.press'); });
     $('musicToggle').addEventListener('change', e => { G.settings.music = e.target.checked; G.Game.applySettings(); G.save(); });
     $('sfxToggle').addEventListener('change', e => { G.settings.sfx = e.target.checked; G.Game.applySettings(); G.save(); });
     $('turboToggle').addEventListener('change', e => { G.settings.turbo = e.target.checked; G.Game.applySettings(); G.save(); });
@@ -129,13 +163,13 @@
       if (S.busy) return;
       const v = $('clientSeedInput').value.trim();
       if (!v) return;
-      PF.setClientSeed(v); $('clientSeedInput').value = ''; AudioEngine.play('coin'); renderFair();
+      PF.setClientSeed(v); $('clientSeedInput').value = ''; AudioEngine.play('ui.confirm'); renderFair();
     });
     $('rotateSeed').addEventListener('click', () => {
       if (S.busy) return;
       const hash = PF.serverHash, seed = PF.rotate();
       revealed[hash] = seed;
-      AudioEngine.play('coin');
+      AudioEngine.play('ui.confirm');
       $('revealedSeed').innerHTML = `Revealed server seed for <code>${hash.slice(0, 16)}…</code>:<br><code class="seed">${seed}</code>`;
       renderFair();
     });
@@ -166,7 +200,23 @@
   }
   function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
+  // ---------------- autoplay sheet / bet grid ----------------
+  const autoCfg = () => G.settings.autoCfg || (G.settings.autoCfg = { n: '25', loss: 0, win: 0, feature: false });
+  function syncAuto() {
+    const c = autoCfg();
+    $('autoCount').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.n === String(c.n))));
+    $('autoLoss').value = String(c.loss); $('autoWin').value = String(c.win); $('autoFeature').checked = !!c.feature;
+  }
+  function renderBets() {
+    $('betGrid').innerHTML = G.BET_STEPS.map((v, i) => `<button type="button" data-i="${i}" aria-pressed="${i === S.betIndex}">${G.money(v)}</button>`).join('');
+    $('betsNote').textContent = S.ante ? T('betsNote') : '';
+  }
+
   // ---------------- rules ----------------
+  function showTab(name) {
+    $('rulesCard').querySelectorAll('.tab').forEach(t => { const on = t.dataset.tab === name; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
+    $('rulesCard').querySelectorAll('[role=tabpanel]').forEach(p => { p.hidden = p.dataset.tab !== name; });
+  }
   // Built from the published math (js/math-info.js), in the right wording for
   // the mode, listing only the controls this mode has.
   function buildRules() {
@@ -177,13 +227,15 @@
     const cost = m => (md[m] ? md[m].cost : { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X }[m]);
     const ctl = [
       [w('Spin', 'Spin') + ' (Space / Enter)', G.allow('slam') ? 'Starts a round. Press again, or tap the board, to hurry the spin along; it also skips win animations.' : 'Starts a round. It also skips win animations.'],
-      G.allow('bet') && ['− / + (↓ / ↑)', `Lower or raise the ${bet}.`],
+      G.allow('bet') && ['− / + (↓ / ↑)', `Lower or raise the ${bet}; hold to keep stepping.`],
+      G.allow('bet') && [w('BET', 'PLAY') + ' (in the bar)', `Tap it to pick from every ${bet} level.`],
       G.allow('ante') && [w('Double chance', 'Double chance'), `Costs 1.25× the ${bet} for each spin and free spins trigger more often. Wins are still multiples of the ${bet}.`],
-      G.allow('buy') && [w('Buy free spins', 'Get free spins'), `Starts 15 free spins straight away for ${cost('bonus')}× the ${bet}. Double chance must be off.`],
-      G.allow('auto') && ['Autoplay', 'Plays 10, 25, 50, 100 or unlimited rounds in a row. Press it again, or press Spin, to stop. It also stops when the balance is too low.'],
+      G.allow('buy') && [w('Buy free spins', 'Get free spins') + ' (B)', `Starts 15 free spins straight away for ${cost('bonus')}× the ${bet}. Double chance must be off.`],
+      G.allow('auto') && ['Autoplay (A)', `Plays 10, 25, 50, 100 or unlimited rounds in a row, with optional stops: when the balance drops by a set amount, on a big single win, or when free spins start. Press it again, or press Spin, to stop. It also stops when the balance is too low.`],
       G.allow('turbo') && ['Turbo (T)', 'Faster animations. The outcome is the same.'],
       ['Info (I)', 'These rules.'],
-      ['Settings', 'Volume, music, sound effects, graphics, motion and more.'],
+      ['Settings', 'Master, music and effects volume, graphics, motion and more.'],
+      ['Unlit controls', 'A control that can’t be used right now is unlit; press it and it says why.'],
       ['Sound (M)', 'Mutes or unmutes the game.'],
       G.allow('fair') && ['History & fairness', 'Your recent spins and the seeds to check them.'],
       G.allow('stats') && ['Stats & achievements', 'Your session and all-time stats.'],
@@ -196,8 +248,11 @@
       G.allow('ante') && ['ante', 'Double chance', `Costs ${cost('ante')}× the ${bet}; free spins trigger more often.`],
       G.allow('buy') && ['bonus', w('Buy free spins', 'Get free spins'), `Costs ${cost('bonus')}× the ${bet}; starts the free spins straight away.`],
     ].filter(Boolean);
-    $('rulesCard').innerHTML = `
+    const tab = (k, label, on) => `<button type="button" class="tab" role="tab" data-tab="${k}" aria-selected="${on}" tabindex="${on ? 0 : -1}">${label}</button>`;
+    $('rulesCard').innerHTML = `${X}
       <h2 id="t-info">How to play</h2>
+      <div class="tabs" role="tablist" aria-label="Rules">${tab('rules', T('rulesTabRules'), true)}${tab('pays', T('rulesTabPays'), false)}${tab('modes', T('rulesTabModes'), false)}${tab('controls', T('rulesTabControls'), false)}</div>
+      <section role="tabpanel" data-tab="rules">
       <p><b>${w('Pay anywhere', 'Win anywhere')}.</b> No paylines: land <b>8 or more</b> of the same symbol anywhere on the 6×5 grid to win. Wins are multiples of the ${bet}.</p>
       <p><b>Tumble.</b> Winning symbols shatter, the rest fall and new ones drop in. Tumbling repeats while new wins form, so one spin can chain many wins.</p>
       <p><b>Multiplier orbs.</b> On any winning tumble, Sebastian can fire an orb worth one of these:</p>
@@ -206,6 +261,8 @@
       <p class="with-icon"><canvas id="scatterIcon" width="64" height="64" aria-hidden="true"></canvas>
         <span><b>Free spins.</b> Scatters are counted once all tumbles have finished and don't win on their own. <b>4+ scatters</b> award <b>15 free spins</b>. In the feature, every orb is <b>saved</b> into a total multiplier that applies to every winning spin until the feature ends. <b>3+ scatters</b> in the feature add <b>+5 spins</b>.</span></p>
       <p><b>Max win.</b> A round can win at most <b>${E.MAX_WIN_X.toLocaleString('en-US')}×</b> the ${bet}. Reaching it ends the round straight away, including any free spins left.</p>
+      </section>
+      <section role="tabpanel" data-tab="modes" hidden>
       <h3>Game modes</h3>
       <div class="facts modes">${modes.map(([m, name, d]) => `<div><span><b>${name}</b> · ${d}</span><b>RTP ${rtp(m)}</b></div>`).join('')}</div>
       <div class="facts">
@@ -213,10 +270,15 @@
         <div><span>Volatility</span><b>Very high</b></div>
       </div>
       <p class="note">RTP (return to player) is the theoretical average over a very large number of rounds. Any one session can return far more or far less.</p>
+      </section>
+      <section role="tabpanel" data-tab="pays" hidden>
       <h3>${w('Paytable', 'Symbol wins')} <span class="faint">(× ${bet})</span></h3>
       <div id="paytable" class="paytable"></div>
+      </section>
+      <section role="tabpanel" data-tab="controls" hidden>
       <h3>Controls</h3>
       <dl class="controls">${ctl.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+      </section>
       <h3>Disclaimer</h3>
       <p class="note">Malfunction voids all ${w('pays', 'wins')} and plays. A consistent internet connection is required; if the connection drops, reload the game to finish any unfinished round. The expected return is calculated over many plays. The game display is not representative of any physical device and is for illustrative purposes only. ${G.mode === 'demo' ? 'This demo plays with a local balance only.' : 'Winnings are settled according to the amount received from the Remote Game Server and not from events within the web browser.'}</p>
       <p class="note">${STR.T('title')} · © 2026 Fiskce</p>

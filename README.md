@@ -1,6 +1,6 @@
 # Thunder Hunter Sebastian ⚡
 
-A tumbling, pay-anywhere slot (v9, formerly *Gates of Sebastian*). Sebastian the hunter stands on a cloud, shotgun in one hand and his fox in the other, and fires multiplier orbs into the board. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies.
+A tumbling, pay-anywhere slot (v10 "Forged Storm", formerly *Gates of Sebastian*). Sebastian the hunter stands on a cloud, shotgun in one hand and his fox in the other, and fires multiplier orbs into the board. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies.
 
 It runs two ways:
 
@@ -19,9 +19,39 @@ Serve the folder and open it in a browser:
 python3 -m http.server 8000      # then visit http://localhost:8000
 ```
 
-Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts and synthesized sound. Offline/install support also needs it to be served (https or localhost).
+Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts, and the sound effects are rendered in the browser from the same recipes the sound sheets were made from (the music stays silent). Offline/install support also needs it to be served (https or localhost).
 
-**Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet, T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations. The rules list every control.
+**Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet (hold − / + to keep stepping; tap BET to pick any level), T toggles turbo, M mutes and I opens the rules. Taps skip win celebrations. A control that can't be used right now is unlit and says why when pressed. The rules list every control.
+
+## What's new in v10: "Forged Storm"
+
+A major refinement, not a new game: the same board, Sebastian, dusk-to-storm sky and Greek-key lintel, made into one consistent physical object with its own sound.
+
+**One material library, one light** (`js/materials.js`)
+- One gold ramp, one key light from the upper left, and a mood fill from below (violet at dusk, amber in the storm). Micro-surface tiles (grain, brushed metal, pitting, velvet), inner shadows, engraving, raised bevelled strokes, all baked once per layout. Detail is decided in device pixels, so small screens get fewer, larger cues instead of shrunken noise.
+- **The frame** is cast and polished gold: the lintel keeps its exact key rhythm, now raised bevelled bars in a sunken bronze channel with a polished lip, ±4% variation per key and rubbed wear towards the ends; round rails bend round the corners; the rosettes have grooved petals, a milgrain bezel and a faceted ruby. Lightning catches every polished edge, and a column that lands glints the lintel above it. It is baked as small strips over two frames, so a resize never stalls.
+- **The tray** is velvet with glass wells, engraved column grooves and gold pins. Symbols cast contact shadows that tighten as they land; losers go unlit (darker, greyer, still solid) instead of see-through; gems get a lit edge and the gold high pays a brushed finish.
+- **Storm-glass orbs**: a fresnel rim instead of a white outline, a plasma core turning inside, a caustic under them, and a gold cage on the 100×+ tier.
+- **The world**: the temple gates and marble columns are gone. A lightning-rod lookout tower stands on the summit (its rod flares on strikes), timber lodge posts with brass straps and storm lanterns frame the screen, and storm-lit pines line the ridges. The sky has a baked grain against banding.
+
+**Sound: three families in one key** (`js/sfx-recipes.js`, `tools/render-sfx.js`, `sounds/sfx-*.ogg/.m4a`)
+- Every tonal sound uses only G A Bb C D F (safe over both soundtracks) and Sebastian's horn call D–A–D. *Brass Detent* for the chrome (a dry ~50 ms switch with a felt thock, toggles in on/off pairs), *Breech & Roll* for Spin (a steel breech clack the instant the round commits, before the network answers; column lands with in-key crystal tines; a seat lock; a brass brake on slam) and *The Storm Breaks* for free spins (the scatters lock, a reversed thunder charges for exactly the soundtrack's intro, and the break, a D-minor brass stab and the horn land on the feature track's first downbeat as the sky turns).
+- 118 sounds rendered from code into three sound sheets, loudness-normalised per category. The same recipes render in the browser when the sheets can't be fetched.
+- A real mix: UI, world, stinger and ambience buses, bus glue, a limiter and one shared room; a voice manager with polyphony, cooldowns and priorities; round-robin variants with slight pitch and level variation; screen panning. Master, music and effects volume sliders. Wins are graded by what they pay against the bet: a neutral tick below it, an in-key chime from it, coins from 5×, tier beds for big wins (the music steps back instead of dropping out).
+
+**Chrome: machined ink steel** (`js/hud.js`, `css/style.css`)
+- Every control is one material: brushed ink-steel plates with a 1 px chamfer and a slim gold inlay; pressing sinks a plate; hover is the light catching its bevel. Gold is kept for money, Spin and the frame; Buy is ruby lacquer in a gold bezel.
+- The console reads **BALANCE · WIN · BET** in recessed readouts with fixed-advance digits. BET is the real cost per spin, Double Chance included, and opens a grid of every bet level. Wins land in WIN first, then the balance rolls up; at rest every amount is exactly the server's. Messages have their own lane and never show money.
+- The Spin button is the one loud element: a knurled gold ring round an enamel dome (violet at dusk, amber in the storm) that sinks under a press, arrows that cock, run and settle, STOP while a round can be hurried, and a tick ring counting down free spins.
+- The multiplier collector is an engraved empty socket until orbs charge it (no more "x0"). The plaque is an enamel cartouche of fixed width. Cluster pays sit on smoked pills.
+- Text is never under 11 px (8 px at 400×225), small controls have 44 px touch areas (36 px in the compact layout), and the canvas keeps clear of notches.
+
+**Big moments and sheets**
+- Big wins stamp each tier on its own enamel plate, show the ladder of tiers passed, and pour coins behind the amount; holds are shorter (2.2 s).
+- Free spins: the award counts in on brass shell clicks on an amber cartouche, which then shrinks into the Spin button; a band of light wipes the sky from dusk to storm.
+- Cards are ink steel with an X in the corner (and Esc, and the backdrop); on phones held upright they rise as bottom sheets. The rules are in tabs. Autoplay has its own sheet: 10/25/50/100/∞ rounds, and optional stops when the balance drops by a set amount, on a single big win, or when free spins start.
+
+**Honest and respectful**: no near-miss messages or reactions, no teasing a feature that is already decided or was bought, turbo shortens presentations but never below 600 ms of legible time, bet buttons sound the same at every level, mute silences every bus, and every flash goes through one limiter.
 
 ## What's new in v9
 
@@ -164,7 +194,9 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 | Quips | `LINES` in `js/sebastian.js`. |
 | Achievements | `ACH` in `js/stats.js`. |
 | Offline cache | `CORE` in `sw.js`; bump `VERSION` on every release. `node tools/test.js` fails if a file the game loads is missing from it. |
-| Sounds | `SOUND_FILES` in `js/audio.js`. Leave `''` to use the synthesized sound. Every other effect is synthesized. |
+| Sound effects | Edit a recipe in `js/sfx-recipes.js`, then `node tools/render-sfx.js` (needs ffmpeg) to re-render the sheets and `sounds/sfx.json`; `node tools/test-sfx.js` checks onsets, key, levels and that every slot fits. |
+| Music & thunder | `SOUND_FILES` in `js/audio.js`; the loop points are in `TRACKS`. |
+| Materials | `G.Mat` in `js/materials.js`: the gold ramp, the light, the micro-surface tiles and the level-of-detail thresholds. |
 | Math | `CONFIG` in `js/engine.js`. Re-run `node tools/sim.js` after any change, then `node tools/export-math.js` for Stake. |
 
 ## Files
@@ -178,21 +210,24 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 | `js/seb-frames.js` | Generated: Sebastian's frames in the sprite sheets |
 | `js/preroll.js` | The "Only on Stake" sting: fill, sound, tap to start |
 | `js/fair.js` | Provably-fair commit/reveal RNG with a built-in SHA-256 and HMAC |
-| `js/core.js` | Namespace, game clock (turbo, slow-mo), adaptive quality, easing, formatting, persistence, responsive layout |
+| `js/core.js` | Namespace, game clock (turbo, slow-mo), adaptive quality, springs, easing, formatting (fixed-advance digits), persistence, responsive layout |
+| `js/materials.js` | The material library: gold ramps, light rig, micro-surface tiles, relief helpers, level of detail |
 | `js/scene.js` | The world behind the board, in two moods |
-| `js/board.js` | Sprites, tumble physics, frame, anticipation columns, orbs |
+| `js/board.js` | Sprites and their material pass, tumble physics, contact shadows, the forged frame and velvet tray, anticipation columns, storm-glass orbs |
 | `js/fx.js` | Particles, lightning, floating text; camera shake, zoom, push-in, tilt; flash limiter |
 | `js/sebastian.js` | Sebastian: idle and shoot clips, aim and fire timing, lean, jump, speech bubbles, big-win cut-in |
-| `js/hud.js` | Side panels, logo, plaque, bottom bar, vector icons, hit regions |
+| `js/hud.js` | Ink-steel chrome: side panels, logo, cartouche plaque, the console and its readouts, the Spin button, reason chips, vector icons, hit regions |
 | `js/overlays.js` | Big win, free-spins intro and outro, banners, milestones, multiplier slam |
 | `js/stats.js` | Session and all-time stats, achievements, toasts |
 | `js/game.js` | Spin orchestration, camera, input, render loop, boot, service-worker registration |
 | `js/ui.js` | DOM panels: rules and paytable, settings, fairness and history, stats, buy, menu |
-| `js/audio.js` | Web Audio engine: files plus synth, pitch, ducking, suspense filter |
+| `js/audio.js` | Web Audio engine: sound sheets (or recipes rendered in the browser), buses, limiter, shared room, voice manager, music tracks and their timing, ducking, suspense filter |
+| `js/sfx-recipes.js` | Every sound effect as a deterministic recipe (Node and browser render the same samples) |
 | `js/music.js` | Heartbeat and storm rumble under the soundtrack (a drum layer over the synth fallback) |
 | `sw.js`, `manifest.json` | Offline cache and install metadata |
 | `tools/sim.js` | Multi-threaded RTP simulator |
-| `tools/test.js` | Crypto, determinism, engine invariants, math fingerprint, book events round-trip, offline-cache coverage |
+| `tools/test.js` | Crypto, determinism, engine invariants, math fingerprint, book events round-trip, offline-cache coverage, sound and string coverage |
+| `tools/render-sfx.js`, `tools/test-sfx.js` | Render the sound sheets from the recipes; check them |
 | `tools/export-math.js` | Stake Engine math files (books, lookup tables, index) |
 | `tools/mock-rgs.js` | Local stand-in for Stake's RGS, serving the game and the books |
 | `tools/build-sebastian.py` | Sebastian's sprite sheets from `art/` |

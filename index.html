@@ -77,9 +77,11 @@
   <div id="m-settings" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-settings">
     <div class="card narrow" tabindex="-1">
       <h2 id="t-settings">Settings</h2>
-      <label class="row"><span>Volume</span><input type="range" id="volSlider" min="0" max="100" /></label>
+      <label class="row"><span>Master volume</span><input type="range" id="volSlider" min="0" max="100" /></label>
       <label class="row"><span>Music</span><input type="checkbox" id="musicToggle" class="switch" /></label>
+      <label class="row sub"><span>Music volume</span><input type="range" id="musicVolSlider" min="0" max="100" /></label>
       <label class="row"><span>Sound effects</span><input type="checkbox" id="sfxToggle" class="switch" /></label>
+      <label class="row sub"><span>Effects volume</span><input type="range" id="sfxVolSlider" min="0" max="100" /></label>
       <label class="row"><span>Turbo spin</span><input type="checkbox" id="turboToggle" class="switch" /></label>
       <label class="row"><span>Dynamic music <small>(heartbeat and storm that follow the action)</small></span><input type="checkbox" id="dynMusicToggle" class="switch" /></label>
       <label class="row"><span>Graphics quality</span>
@@ -154,6 +156,36 @@
     </div>
   </div>
 
+  <!-- Autoplay: how many rounds, and when to stop on its own -->
+  <div id="m-auto" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-auto">
+    <div class="card narrow" tabindex="-1">
+      <h2 id="t-auto" data-t="autoTitle">Autoplay</h2>
+      <p class="lead" data-t="autoRounds">Rounds</p>
+      <div class="seg" id="autoCount" role="group" data-ta="autoRounds" aria-label="Rounds">
+        <button type="button" data-n="10">10</button><button type="button" data-n="25">25</button><button type="button" data-n="50">50</button><button type="button" data-n="100">100</button><button type="button" data-n="Infinity">∞</button>
+      </div>
+      <label class="row"><span data-t="autoLoss">Stop if the balance drops by</span>
+        <select id="autoLoss"><option value="0" data-t="autoNoLimit">No limit</option><option value="10">10×</option><option value="25">25×</option><option value="50">50×</option><option value="100">100×</option></select></label>
+      <label class="row"><span data-t="autoWin">Stop on a single win of</span>
+        <select id="autoWin"><option value="0" data-t="autoNoLimit">No limit</option><option value="10">10×</option><option value="50">50×</option><option value="100">100×</option><option value="500">500×</option></select></label>
+      <label class="row"><span data-t="autoFeature">Stop when free spins start</span><input type="checkbox" id="autoFeature" class="switch" /></label>
+      <p class="note" data-t="autoNote">Limits are multiples of the bet. Autoplay also stops when the balance is too low, and Spin stops it at any time.</p>
+      <div class="btn-row">
+        <button class="ghost" data-close data-t="cancel">Cancel</button>
+        <button id="autoStart" class="primary" data-t="autoStart">Start autoplay</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Every bet level, to pick one directly -->
+  <div id="m-bets" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-bets">
+    <div class="card narrow" tabindex="-1">
+      <h2 id="t-bets" data-t="betsTitle">Choose your bet</h2>
+      <div class="bet-grid" id="betGrid" role="group" data-ta="betsTitle" aria-label="Bet levels"></div>
+      <p class="note" id="betsNote"></p>
+    </div>
+  </div>
+
   <!-- Mobile menu -->
   <div id="m-menu" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-menu">
     <div class="card narrow" tabindex="-1">
@@ -203,9 +235,11 @@
   <script src="js/engine.js"></script>
   <script src="js/fair.js"></script>
   <script src="js/symbols.js"></script>
+  <script src="js/sfx-recipes.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/music.js"></script>
   <script src="js/core.js"></script>
+  <script src="js/materials.js"></script>
   <script src="js/rgs.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/scene.js"></script>

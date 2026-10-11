@@ -98,11 +98,11 @@
   };
   FX.ring = (x, y, color, r0, r1, dur, width) => FX.spawn({ kind: 'ring', x, y, size: r0, size1: r1, max: dur || 0.5, color, lw: width || 4 });
   FX.star = (x, y, size, dur) => FX.spawn({ kind: 'star', x, y, size: 0, peak: size, max: dur || 0.6, rot: Math.random() * 3 });
-  FX.coins = (x, y, n, spread, up) => {
+  FX.coins = (x, y, n, spread, up, layer) => {
     n = budget(n);
     for (let k = 0; k < n; k++) {
       FX.spawn({ kind: 'coin', x: x + G.rand(-spread, spread), y, vx: G.rand(-260, 260), vy: -G.rand(up * 0.55, up), ay: 1300,
-        max: G.rand(1.6, 2.6), size: G.rand(13, 22), rot: Math.random() * 7, vr: G.rand(6, 14), add: false, layer: 2 });
+        max: G.rand(1.6, 2.6), size: G.rand(13, 22), rot: Math.random() * 7, vr: G.rand(6, 14), add: false, layer: layer || 2 });
     }
   };
   // a spark that arcs from (x,y) into a target and calls onArrive when it lands
@@ -206,7 +206,18 @@
           const pop = t < 0.15 ? G.ease.outBack(t / 0.15) : 1;
           ctx.globalAlpha = t > 0.7 ? (1 - t) / 0.3 : 1;
           ctx.save(); ctx.translate(p.x, p.y); ctx.scale(pop, pop);
-          G.goldText(ctx, p.text, 0, 0, p.size, { display: p.display !== false, colors: p.colors, glow: p.glow, maxW: p.maxW });
+          if (p.pill) {
+            // a cluster pay on a smoked pill: the amount in gold, what paid it under it
+            const sub = p.sub ? Math.max(11, p.size * 0.5) : 0;
+            ctx.font = G.font(p.size, 800); let w = ctx.measureText(p.text).width;
+            if (p.sub) { ctx.font = G.font(sub, 700); w = Math.max(w, ctx.measureText(p.sub).width); }
+            w = Math.min(p.maxW || w, w) + p.size * 0.9;
+            const h = p.size * 1.3 + sub * 1.25;
+            G.roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(h / 2, p.size * 0.55));
+            ctx.fillStyle = 'rgba(10,12,22,.76)'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(242,201,90,.4)'; ctx.stroke();
+            G.goldText(ctx, p.text, 0, -h / 2 + p.size * 0.72, p.size, { display: false, weight: 800, maxW: w - p.size * 0.5, tabular: true, stroke: 0.09 });
+            if (p.sub) G.text(ctx, p.sub, 0, h / 2 - sub * 0.85, sub, '#B9B6D3', { weight: 700, maxW: w - p.size * 0.5 });
+          } else G.goldText(ctx, p.text, 0, 0, p.size, { display: p.display !== false, colors: p.colors, glow: p.glow, maxW: p.maxW });
           ctx.restore();
           break;
         }

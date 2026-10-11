@@ -103,8 +103,10 @@ window.GOS = (() => {
     while (p < 6 && u % Math.pow(10, 6 - p) !== 0) p++;
     return p;
   };
-  // a counting animation shows the decimals of the amount it is counting to, so digits don't come and go
-  G.countPlaces = to => G.placesFor(to);
+  // a count shows the currency's normal decimals while it runs (no "$1.000" on the way to $16.125)
+  // and lands on the exact amount (G.countMoney)
+  G.countPlaces = () => cur().dec;
+  G.countMoney = (shown, to) => G.money(shown, Math.abs(shown - to) < 1e-9 ? G.placesFor(to) : cur().dec);
   G.money = (n, places) => {
     const c = cur(), p = places != null ? places : G.placesFor(n);
     const s = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: p, maximumFractionDigits: p });
@@ -151,7 +153,7 @@ window.GOS = (() => {
     history: [],
   };
   const touch = typeof navigator !== 'undefined' && (navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
-  G.settings = { volume: 0.7, music: true, sfx: true, turbo: false, reducedMotion: false, introSeen: false,
+  G.settings = { volume: 0.7, musicVol: 0.8, sfxVol: 0.85, music: true, sfx: true, turbo: false, reducedMotion: false, introSeen: false,
     quality: 'auto', tilt: false, haptics: touch, dynMusic: true };
   G.baseBet = () => G.BET_STEPS[G.S.betIndex];
   G.spinCost = () => G.baseBet() * (G.S.ante ? E.ANTE_COST : 1);
@@ -397,13 +399,32 @@ window.GOS = (() => {
     return (haloCache[color] = c);
   }
 
+  /* Fixed-advance digits: every digit takes the width of the widest one, so a
+   * number that counts or changes never jitters sideways. Returns the char
+   * centres (from the left edge) and the total width at the current font. */
+  function tabular(ctx, text) {
+    let dw = 0;
+    for (let d = 0; d <= 9; d++) dw = Math.max(dw, ctx.measureText(String(d)).width);
+    const xs = []; let w = 0;
+    for (const ch of text) { const cw = ch >= '0' && ch <= '9' ? dw : ctx.measureText(ch).width; xs.push(w + cw / 2); w += cw; }
+    return { xs, w };
+  }
+  function drawTabular(ctx, text, x, y, align, draw) {
+    const t = tabular(ctx, text), left = align === 'left' ? x : align === 'right' ? x - t.w : x - t.w / 2;
+    ctx.textAlign = 'center';
+    let i = 0;
+    for (const ch of text) draw(ch, left + t.xs[i++], y);
+    ctx.textAlign = align;
+  }
+  const textW = (ctx, text, tab) => tab ? tabular(ctx, text).w : ctx.measureText(text).width;
+
   // gold text with dark outline + glow; size is shrunk to fit maxW
   G.goldText = (ctx, text, x, y, size, opts) => {
     opts = opts || {};
     const display = opts.display !== false;
     ctx.font = G.font(size, opts.weight || 900, display);
     if (opts.maxW) {
-      const w = ctx.measureText(text).width;
+      const w = textW(ctx, text, opts.tabular);
       if (w > opts.maxW) { size *= opts.maxW / w; ctx.font = G.font(size, opts.weight || 900, display); }
     }
     ctx.textAlign = opts.align || 'center'; ctx.textBaseline = 'middle';
@@ -413,7 +434,7 @@ window.GOS = (() => {
     stops.forEach((c, i) => gr.addColorStop(i / (stops.length - 1), c));
     ctx.lineJoin = 'round';
     if (opts.glow) {
-      const w = ctx.measureText(text).width, al = ctx.textAlign;
+      const w = textW(ctx, text, opts.tabular), al = ctx.textAlign;
       const cx = al === 'left' ? x + w / 2 : al === 'right' ? x - w / 2 : x;
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.55;
       ctx.drawImage(haloSprite(opts.glow), cx - w * 0.62 - size * 0.4, y - size * 0.95, w * 1.24 + size * 0.8, size * 1.9);
@@ -421,8 +442,11 @@ window.GOS = (() => {
     }
     ctx.lineWidth = Math.max(2, size * (opts.stroke || 0.14));
     ctx.strokeStyle = opts.strokeColor || '#3a1d03';
-    ctx.strokeText(text, x, y);
-    ctx.fillStyle = gr; ctx.fillText(text, x, y);
+    ctx.fillStyle = gr;
+    if (opts.tabular) {
+      drawTabular(ctx, text, x, y, opts.align || 'center', (ch, cx, cy) => ctx.strokeText(ch, cx, cy));
+      drawTabular(ctx, text, x, y, opts.align || 'center', (ch, cx, cy) => ctx.fillText(ch, cx, cy));
+    } else { ctx.strokeText(text, x, y); ctx.fillText(text, x, y); }
     return size;
   };
 
@@ -431,12 +455,14 @@ window.GOS = (() => {
     opts = opts || {};
     ctx.font = G.font(size, opts.weight || 700, opts.display);
     if (opts.maxW) {
-      const w = ctx.measureText(t).width;
+      const w = textW(ctx, t, opts.tabular);
       if (w > opts.maxW) { size = Math.max(6, size * opts.maxW / w); ctx.font = G.font(size, opts.weight || 700, opts.display); }
     }
     ctx.textAlign = opts.align || 'center'; ctx.textBaseline = opts.baseline || 'middle';
     if (opts.shadow) { ctx.save(); ctx.shadowColor = opts.shadow; ctx.shadowBlur = opts.blur || 6; ctx.shadowOffsetY = opts.offY || 1; }
-    ctx.fillStyle = color; ctx.fillText(t, x, y);
+    ctx.fillStyle = color;
+    if (opts.tabular) drawTabular(ctx, t, x, y, opts.align || 'center', (ch, cx, cy) => ctx.fillText(ch, cx, cy));
+    else ctx.fillText(t, x, y);
     if (opts.shadow) ctx.restore();
     return size;
   };

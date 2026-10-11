@@ -7,7 +7,8 @@
  * the whole origin, so this worker only ever touches this game's caches ('gos<N>-core/-media').
  *  - code (html/js/css/json): network first, cache as fallback -> online
  *    players always get the latest build
- *  - art, fonts, sounds: cache first
+ *  - art, fonts, sounds: cache first (the .m4a sound sheets Safari uses are
+ *    cached on first use; offline without them, the recipes render the same sounds)
  * Bump VERSION on every release.
  */
 const VERSION = 'gos10-core-1';
@@ -23,9 +24,11 @@ const CORE = [
   'js/engine.js',
   'js/fair.js',
   'js/symbols.js',
+  'js/sfx-recipes.js',
   'js/audio.js',
   'js/music.js',
   'js/core.js',
+  'js/materials.js',
   'js/rgs.js',
   'js/fx.js',
   'js/scene.js',
@@ -60,10 +63,10 @@ const CORE = [
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',
   'assets/icons/icon-maskable-512.png',
-  'sounds/click.ogg',
-  'sounds/freespins.ogg',
-  'sounds/scatter.ogg',
-  'sounds/spin.ogg',
+  'sounds/sfx.json',
+  'sounds/sfx-ui.ogg',
+  'sounds/sfx-world.ogg',
+  'sounds/sfx-fs.ogg',
   'sounds/thunder.ogg',
 ];
 

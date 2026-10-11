@@ -206,4 +206,43 @@ ok('every asset the game loads exists and is precached by the service worker', (
     assert.ok(core.includes(f), 'not precached by sw.js: ' + f);
   }
 });
+ok('every sound the game plays is in the v10 kit (or is one of the few kept outside it)', () => {
+  const fs = require('fs'), root = path.join(__dirname, '..');
+  const SFX = require(path.join(root, 'js', 'sfx-recipes.js'));
+  const sheet = JSON.parse(fs.readFileSync(path.join(root, 'sounds', 'sfx.json'), 'utf8'));
+  const OUTSIDE = ['thunder', 'achievement', 'whoosh'];          // a file and two synths in audio.js
+  const names = new Set();
+  for (const f of fs.readdirSync(path.join(root, 'js')).filter(f => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(root, 'js', f), 'utf8');
+    for (const m of src.matchAll(/AudioEngine\.play\('([A-Za-z0-9.]+)'/g)) names.add(m[1]);
+  }
+  // names built at run time: 'tine.' + a note, 'tier.' + a number
+  for (const n of ['G4', 'Bb4', 'C5', 'D5', 'F5', 'G5', 'F4', 'A4', 'Bb5', 'D6']) names.add('tine.' + n);
+  for (let k = 0; k < 4; k++) names.add('tier.' + k);
+  names.delete('tine.'); names.delete('tier.');
+  for (const n of names) {
+    if (OUTSIDE.includes(n)) continue;
+    assert.ok(SFX.RECIPES[n], 'no recipe for "' + n + '"');
+    for (let v = 0; v < SFX.RECIPES[n].variants; v++) assert.ok(sheet.slots[n + '#' + v], 'no sheet slot for ' + n + '#' + v);
+  }
+  assert.strictEqual(sheet.hash.length > 0, true);
+});
+ok('every string the code asks for exists (canvas, DOM and overlays)', () => {
+  const fs = require('fs'), root = path.join(__dirname, '..');
+  const STR = loadStrings('');
+  const missing = [];
+  for (const f of fs.readdirSync(path.join(root, 'js')).filter(f => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(root, 'js', f), 'utf8');
+    for (const m of src.matchAll(/\bG?\.?T\('([a-zA-Z]+)'/g)) if (STR.T(m[1]) === m[1]) missing.push(f + ': ' + m[1]);
+  }
+  for (const m of fs.readFileSync(path.join(root, 'index.html'), 'utf8').matchAll(/data-t[ha]?="([a-zA-Z]+)"/g)) if (STR.T(m[1]) === m[1]) missing.push('index.html: ' + m[1]);
+  assert.deepStrictEqual(missing, []);
+});
+ok('the service worker is v10 and clears older versions of this game only', () => {
+  const sw = require('fs').readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+  assert.ok(/VERSION = 'gos10-core-\d+'/.test(sw) && /MEDIA = 'gos10-media'/.test(sw));
+  const re = /^gos\d+-(core|media)/;
+  for (const k of ['gos9-core-3', 'gos9-media', 'gos8-core-2']) assert.ok(re.test(k), k);
+  for (const k of ['other-app-cache', 'workbox-precache']) assert.ok(!re.test(k), k);
+});
 console.log(`\n${n} checks passed`);
