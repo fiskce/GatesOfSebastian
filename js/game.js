@@ -48,8 +48,9 @@
 
   // ---------------- wallets ----------------
   // begin(mode) charges for a round and returns where its spins come from;
-  // settle(src) closes it. mode: 'base' | 'ante' | 'bonus'.
-  const costOf = mode => mode === 'bonus' ? G.buyCost() : mode === 'ante' ? G.baseBet() * E.ANTE_COST : G.baseBet();
+  // settle(src) closes it. mode: 'base' | 'ante' | 'bonus' | 'super'.
+  const costOf = mode => mode === 'super' ? G.superCost() : mode === 'bonus' ? G.buyCost() : mode === 'ante' ? G.baseBet() * E.ANTE_COST : G.baseBet();
+  const isBuyMode = mode => mode === 'bonus' || mode === 'super';
   function lowBalance() { const e = new Error('low balance'); e.code = 'LOW'; return e; }
   const DemoWallet = {
     canAfford: mode => S.credit >= costOf(mode) - 1e-9,
@@ -57,7 +58,7 @@
       if (!DemoWallet.canAfford(mode)) throw lowBalance();
       const stake = costOf(mode);
       S.credit -= stake;
-      G.Stats.record('stake', { amount: stake, buy: mode === 'bonus' });
+      G.Stats.record('stake', { amount: stake, buy: isBuyMode(mode) });
       G.save();
       return demoSource();
     },
@@ -70,9 +71,11 @@
         const rng = PF.nextRng();
         const entry = { nonce: PF.nonce, serverHash: PF.serverHash, clientSeed: PF.clientSeed, mode, buy: !!o.buy,
           persistent: o.persistent, bet: o.bet, time: Date.now() };
-        return { out: E.playSpin(rng, mode, { buy: o.buy, persistent: o.persistent }), entry };
+        if (o.super) entry.super = true;          // a Super Free Spins free spin: its own orb chance
+        return { out: E.playSpin(rng, mode, { buy: !!o.buy, persistent: o.persistent, super: !!o.super }), entry };
       },
       hasNext: () => true,
+      start: null,                          // the feature's start is the engine's (SUPER_START for a super buy)
     };
   }
   const RgsWallet = {
@@ -117,7 +120,7 @@
     src.broken = !ok || !events.length;
     src.payX100 = payX100;
     src.mode = String(round.mode || mode || 'base').toLowerCase();
-    src.buy = src.mode === 'bonus';
+    src.buy = isBuyMode(src.mode) ? src.mode : false;
     return src;
   }
   // take over a round the RGS has open: its own bet and mode
@@ -139,9 +142,10 @@
   Game.canAfford = mode => G.Wallet.canAfford(mode);
 
   // ---------------- round orchestration ----------------
+  // buy: false for a paid spin, or the buy mode ('bonus' | 'super')
   async function round(buy) {
     if (S.busy || S.inFS || S.locked || G.mode === 'replay') return;
-    const mode = buy ? 'bonus' : S.ante ? 'ante' : 'base';
+    const mode = buy || (S.ante ? 'ante' : 'base');
     S.busy = true; S.autoMenu = false;            // claimed before any await: a second press can't start another round
     // the breech closes the moment the round commits, before the network answers
     if (G.Wallet.canAfford(mode)) AudioEngine.play(G.turboOn() ? 'spin.press.t' : S.auto > 0 ? 'spin.press.auto' : mode === 'ante' ? 'spin.press.dc' : 'spin.press');
@@ -178,7 +182,7 @@
     }
   }
 
-  // plays a round's spins: the paid spin, then the free spins it triggered
+  // plays a round's spins: the paid spin, then the free spins it triggered (buy: false | 'bonus' | 'super')
   async function present(src, buy) {
     S.roundWin = 0; S.winDisplay = 0;
     if (src.broken) throw new Error('round without events');
@@ -186,7 +190,7 @@
     if (r.triggered && !r.maxed) {
       // autoplay's "stop when free spins start" applies now, so the feature plays at its own pace
       if (S.auto > 0 && S.autoLimits && S.autoLimits.feature) { S.auto = 0; say(T('msgAutoFeature')); }
-      await feature(!buy, src);
+      await feature(!buy, src, buy === 'super');
     }
     G.Music.setIntensity(0);
     G.Stats.record('round', { winX: S.roundWin / G.baseBet() });
@@ -203,7 +207,7 @@
     else S.winDisplay = 0;
     const mode = S.inFS ? 'fs' : (S.ante && !opts.buy ? 'ante' : 'base');
     const persistentBefore = S.persistent;
-    const { out, entry, winX100, capped } = opts.src.next(mode, { buy: opts.buy, persistent: persistentBefore, bet });
+    const { out, entry, winX100, capped } = opts.src.next(mode, { buy: opts.buy, persistent: persistentBefore, bet, super: S.inFS && S.superFS });
     if (S.inFS) AudioEngine.play(S.fsLeft === 0 ? 'fs.last' : 'spin.press.fs');
     G.Music.setIntensity(spinLevel());
     if (S.inFS) say(T('msgFreeSpin', { a: S.fsPlayed, b: S.fsAward }), false);
@@ -238,7 +242,9 @@
     if (spinWin > 0) {
       S.credit += spinWin; S.roundWin += spinWin; S.lastWin = spinWin;
       if (S.inFS) S.fsTotal += spinWin;
-      await celebrate(spinWin, bet);
+      // the 5,000x cap gets its own moment; anything else is scaled to the spin (against what it cost)
+      if (maxed) { S.winDisplay = S.roundWin; await O.maxWin(S.roundWin, bet, S.auto > 0 ? 3000 : 6000); }
+      else await celebrate(spinWin, bet, S.inFS ? bet : opts.buy ? costOf(opts.buy) : G.spinCost());
     }
     S.tumbleShown = 0; S.countTo = null;
     // WIN holds the round's total from the moment a win is banked (not only after the scatters and banners)
@@ -256,14 +262,19 @@
     const need = S.inFS ? SCATTERS_RETRIG : SCATTERS_FS;
     let triggered = false, retrig = false;
     if (maxed) {
-      await O.banner(T('maxWin'), T('maxReached', { x: G.xfmt(MAX_WIN_X) }), 2200);
+      // the max-win card above said it all: the round ends here
     } else if (!S.inFS && (opts.buy || out.res.scatters >= SCATTERS_FS)) {
       triggered = true; await stormBreaks(out.res.finalBoard);
     } else if (S.inFS && out.res.scatters >= need) {
       retrig = true; G.Seb.say('retrigger'); G.Stats.record('retrigger'); await scatterLock(out.res.finalBoard, true);
-      S.fsLeft += FS_RETRIGGER; S.fsAward += FS_RETRIGGER;
       AudioEngine.play('fs.retrigger');            // a crack, an F-major stab and five shells sliding in (the reload)
-      await O.banner(T('fsMore', { n: FS_RETRIGGER }), T('fsRetrigger'), 1600);
+      // the +5 card flies into the Spin button, which counts the new spins in one by one
+      await O.retrigger(FS_RETRIGGER, S.auto > 0 ? 900 : 1300);
+      for (let k = 0; k < FS_RETRIGGER; k++) {
+        S.fsLeft++; S.fsAward++; S.fsCountT = G.clock.real;
+        AudioEngine.play('fs.award.click', { rate: Math.pow(2, [0, 2, 4, 7, 9, 12][Math.min(5, k)] / 12) });
+        await G.wait(70);
+      }
     } else if (!S.inFS && out.res.scatters === SCATTERS_FS - 1) {
       // a near miss is counted for stats only: no message, no reaction
     }
@@ -472,11 +483,16 @@
     G.Seb.cheer(1.3); G.Seb.say('milestone');
   }
 
-  async function celebrate(amount, bet) {
+  // stake: what the spin cost (a free spin's is the bet). A win that doesn't beat it isn't celebrated:
+  // WIN updates with a soft tick, without coins, win sounds or a pop
+  async function celebrate(amount, bet, stake) {
     const x = amount / bet;
     if (live) live.textContent = 'You won ' + G.money(amount);
     if (O.tierFor(x) >= 0) {
       await O.bigWin(amount, bet, S.auto > 0 || S.inFS ? 1800 : 2200);
+    } else if (amount <= stake + 1e-9) {
+      AudioEngine.play('count.tick'); S.winDisplay = S.roundWin;
+      await G.wait(350);
     } else {
       const r = G.L.reel;
       FX.coins(r.x + r.w / 2, r.y + r.h * 0.65, Math.min(30, 4 + Math.round(x * 2)), r.w * 0.2, G.H * 0.7);
@@ -550,24 +566,45 @@
     B.highlight(set, false);
   }
 
-  async function feature(natural, src) {
-    G.Stats.record('feature', { natural });
-    await O.fsIntro(FS_AWARD, S.auto > 0 ? 1200 : 1700);
-    S.inFS = true; S.fsLeft = FS_AWARD; S.fsAward = FS_AWARD; S.fsPlayed = 0; S.fsTotal = 0; S.persistent = 0; S.fsMilestone = 0;
+  // Super Free Spins: the starting multiplier forms over the board and is charged into the well
+  async function startMultiplier(start) {
+    S.persistent = 0;                         // the well fills as the charge lands
+    AudioEngine.play('thunder', { gain: 0.8 }); Scene.lightning(true); FX.flash(0.5, '255,200,150');
+    G.Seb.cheer(1.4);
+    await O.charge(start, H.wellCenter());
+    S.persistent = start; S.wellPulseT = G.clock.real;
+    const c = H.wellCenter();
+    AudioEngine.play('slam', { variant: G.orbTier(start) });
+    FX.ring(c.x, c.y, '#ffd27a', 8, G.L.well.w * 0.6, 0.5, 6); FX.burst(c.x, c.y, '#ffb02e', 24, 500, { size: 12, layer: 1 });
+    FX.shake(10); FX.punch(0.03); G.haptic([30, 30, 60]);
+    await G.wait(350);
+  }
+
+  async function feature(natural, src, isSuper) {
+    G.Stats.record('feature', { natural, super: !!isSuper });
+    // Super Free Spins start with a total multiplier (the book's trigger says how big; the demo's is the engine's)
+    const start = isSuper ? (src.start || E.SUPER_START) : 0;
+    await O.fsIntro(FS_AWARD, S.auto > 0 ? 1200 : 1700, { super: !!isSuper, start });
+    S.inFS = true; S.superFS = !!isSuper; S.fsLeft = FS_AWARD; S.fsAward = FS_AWARD; S.fsPlayed = 0; S.fsTotal = 0;
+    S.persistent = start; S.fsMilestone = MILESTONES.filter(m => m <= start).pop() || 0;
+    if (start) await startMultiplier(start);
     S.moodTarget = 1; AudioEngine.musicMode('fs');
     G.Seb.say('fsStart');
     await G.wait(300);
+    let maxed = false;
     while (S.fsLeft > 0) {
       if (!src.hasNext()) { G.log('the round has no more free spins'); break; }
       const r = await spin({ src });
-      if (r.maxed) break;
+      if (r.maxed) { maxed = true; break; }
       await G.wait(380);
     }
     if (src.left && src.left() > 0) G.log(src.left() + ' spins left over in the round');
-    await O.fsOutro(S.fsTotal, S.fsPlayed, G.baseBet(), S.auto > 0 ? 2600 : 6000);
+    // the outro is scaled to the result against what the round cost (the max win had its own moment)
+    const cost = natural ? G.spinCost() : costOf(isSuper ? 'super' : 'bonus');
+    if (!maxed) await O.fsOutro(S.fsTotal, S.fsPlayed, G.baseBet(), S.auto > 0 ? 2600 : 6000, cost);
     G.Seb.say(S.fsTotal / G.baseBet() >= 20 ? 'fsGood' : 'fsBad');
     G.Stats.record('featureEnd', { totalX: S.fsTotal / G.baseBet() });
-    S.inFS = false; S.persistent = 0; S.moodTarget = 0; AudioEngine.musicMode('base');
+    S.inFS = false; S.superFS = false; S.persistent = 0; S.moodTarget = 0; AudioEngine.musicMode('base');
     S.winDisplay = S.roundWin;
     say(T('fsComplete'));                 // the total itself stays in the WIN readout
   }
@@ -589,13 +626,18 @@
     AudioEngine.play('spin.brake');
     G.haptic(10);
   };
+  // the buy menu: Free Spins and Super Free Spins (each card says when the balance can't cover it)
   Game.askBuy = () => {
     if (S.busy || S.inFS || !G.allow('buy')) return;
     if (S.ante) { say(T('msgAnteFirst')); AudioEngine.play('ui.denied'); return; }
     if (!G.Wallet.canAfford('bonus')) { say(T('msgTooLow')); G.UI.open('credit'); return; }
     G.UI.open('buy');
   };
-  Game.buy = () => round(true);
+  Game.buy = kind => {
+    kind = kind === 'super' ? 'super' : 'bonus';
+    if (S.busy || S.inFS || S.ante || !G.allow('buy') || !G.Wallet.canAfford(kind)) return;
+    round(kind);
+  };
   Game.toggleAnte = () => {
     if (S.busy || S.inFS || !G.allow('ante')) return;
     S.ante = !S.ante; G.save();
@@ -683,12 +725,12 @@
     if (S.busy || !replayData) return;
     G.UI.closeAll(true);
     // a fresh board and fresh counters every time
-    Object.assign(S, { inFS: false, fsLeft: 0, fsPlayed: 0, fsTotal: 0, fsAward: 0, persistent: 0, fsMilestone: 0, roundWin: 0,
+    Object.assign(S, { inFS: false, superFS: false, fsLeft: 0, fsPlayed: 0, fsTotal: 0, fsAward: 0, persistent: 0, fsMilestone: 0, roundWin: 0,
       winDisplay: 0, tumbleWin: 0, tumbleShown: 0, spinMult: 0, moodTarget: 0 });
     AudioEngine.musicMode('base');
     S.busy = true;
     const mode = R.replay.mode;
-    try { await present(R.eventSource(replayData.events), mode === 'bonus'); }
+    try { await present(R.eventSource(replayData.events), isBuyMode(mode) ? mode : false); }
     catch (e) { G.log(e); showError(T('errState')); }
     S.busy = false; S.slam = false; setPace();
     G.UI.showReplay(replayData, S.roundWin);
@@ -697,7 +739,7 @@
   // re-derive a past spin from a revealed server seed
   Game.verify = (entry, serverSeed) => {
     const hashOk = PF.hashOf(serverSeed) === entry.serverHash;
-    const out = E.playSpin(PF.makeStream(serverSeed, entry.clientSeed, entry.nonce), entry.mode, { buy: entry.buy, persistent: entry.persistent });
+    const out = E.playSpin(PF.makeStream(serverSeed, entry.clientSeed, entry.nonce), entry.mode, { buy: entry.buy, persistent: entry.persistent, super: !!entry.super });
     const boardOk = out.board.join(',') === entry.board;
     const winOk = Math.abs(out.ev.winX - entry.rawWinX) < 1e-9;
     return { ok: hashOk && boardOk && winOk, hashOk, boardOk, winOk, winX: out.ev.winX };

@@ -14,24 +14,30 @@
  *
  *   node tools/export-math.js                     # default sizes, a few minutes on 4 cores
  *   node tools/export-math.js --scale 4           # 4x the books per bucket
+ *   node tools/export-math.js --modes super --scale 1.5   # one mode, merged into the math already in --out
  *   node tools/export-math.js --scale 0.02 --out /tmp/math --no-info   # tiny export for tests
  *
  * payoutMultiplier is in hundredths of the base bet (1250 = 12.5x), the same
  * in every mode; a mode's cost is what the RGS charges per base bet (1, 1.25,
- * 100). The client animates a book from its events: each `spin` event holds
+ * 100, 500). The client animates a book from its events: each `spin` event holds
  * the board, the board after every tumble and the orbs that landed, which
  * Engine.expandSpin turns back into exactly what playSpin returned.
  *
  * Books are sampled in buckets ("criteria"), like Stake's math SDK does:
  *   0          rounds that pay nothing
  *   basegame   rounds that pay without free spins
- *   freegame   rounds with free spins (every bonus-mode round)
+ *   freegame   rounds with free spins (every round of a buy mode: bonus, super)
  *   wincap     rounds that reach the 5,000x max win (found by search, so the
  *              max win is in every mode's table)
  * Each bucket gets its natural probability, measured while sampling, shared
  * evenly by its books. Then one group's weight is scaled so the RTP comes out
- * at exactly the target: the 0 bucket in base and ante, and the books under
- * 20x in the bonus mode, which has almost no 0x rounds.
+ * at exactly the target: the 0 bucket in base and ante, and in a buy mode,
+ * which has almost no 0x rounds, its low books (under 20x for bonus, under its
+ * 500x cost for super). Each buy mode measures its own max-win rate; base and
+ * ante use the bonus mode's (a natural feature starts at 0x, like a bought one).
+ *
+ * --modes exports only those modes and merges them into the index.json and
+ * summary.json already in --out, so the other modes' files stay exactly as they are.
  *
  * Every book has its own random stream (a hash of mode, job and index), so
  * any book can be regenerated on its own. The samples are the same for a
@@ -52,8 +58,10 @@ const TARGET_RTP = 0.965;
 const MODES = {
   base:  { cost: 1,               opts: {} },
   ante:  { cost: E.ANTE_COST,     opts: { ante: true } },
-  bonus: { cost: E.BUY_COST_X,    opts: { buy: true } },
+  bonus: { cost: E.BUY_COST_X,    opts: { buy: true },   adjustBelowX: 20 },
+  super: { cost: E.SUPER_COST_X,  opts: { super: true }, adjustBelowX: E.SUPER_COST_X },   // Super Free Spins
 };
+const isBuy = mode => !!(MODES[mode].opts.buy || MODES[mode].opts.super);
 const MAX_X100 = E.MAX_WIN_X * 100;
 const WEIGHT_SCALE = 1e15;              // total weight of a mode before the RTP adjustment (< 2^53)
 
@@ -85,7 +93,7 @@ function rngFor(tag, i) {
 function classify(r, mode) {
   const pm = Math.round(r.totalX * 100);
   if (pm >= MAX_X100) return 'wincap';
-  if (mode === 'bonus' || r.feature) return 'freegame';
+  if (isBuy(mode) || r.feature) return 'freegame';
   return pm > 0 ? 'basegame' : '0';
 }
 function bookOf(r) {
@@ -136,8 +144,9 @@ const SIZES = {
   base:  { '0': q(20000), basegame: q(60000), freegame: q(15000), wincap: Math.max(2, Math.round(6 * Math.min(1, SCALE * 4))) },
   ante:  { '0': q(20000), basegame: q(60000), freegame: q(15000), wincap: Math.max(2, Math.round(6 * Math.min(1, SCALE * 4))) },
   bonus: { freegame: q(30000), wincap: Math.max(2, Math.round(16 * Math.min(1, SCALE * 4))) },
+  super: { freegame: q(20000), wincap: Math.max(2, Math.round(16 * Math.min(1, SCALE * 4))) },
 };
-const CAPRATE_ROUNDS = q(200000);       // extra bonus rounds, only to measure how often a feature hits the cap
+const CAPRATE_ROUNDS = q(200000);       // extra rounds of each buy mode, only to measure how often its feature hits the cap
 const t0 = Date.now();
 const log = (...m) => console.log(`[${((Date.now() - t0) / 1000).toFixed(0).padStart(4)}s]`, ...m);
 
@@ -172,7 +181,8 @@ function weigh(mode, buckets, probs) {
     const w = probs[crit] * WEIGHT_SCALE / list.length;
     for (const b of list) books.push(Object.assign(b, { criteria: crit, weight: w }));
   }
-  const adjustable = mode === 'bonus' ? b => b.pm < 2000 && b.criteria !== 'wincap' : b => b.criteria === '0';
+  const low = MODES[mode].adjustBelowX * 100;
+  const adjustable = isBuy(mode) ? b => b.pm < low && b.criteria !== 'wincap' : b => b.criteria === '0';
   let aw = 0, ap = 0, rw = 0, rp = 0;
   for (const b of books) { if (adjustable(b)) { aw += b.weight; ap += b.weight * b.pm; } else { rw += b.weight; rp += b.weight * b.pm; } }
   const k = (rp - target * rw) / (target * aw - ap);
@@ -225,6 +235,7 @@ function verify(mode, expected) {
     let persistent = 0, sum = 0;
     b.events.forEach((e, k) => {
       if (e.index !== k) throw new Error(`${mode}: book ${b.id} event index`);
+      if (e.type === 'freeSpinsTrigger') persistent = e.start || 0;      // Super Free Spins start at 100x
       if (e.type !== 'spin') return;
       const out = E.expandSpin(e, e.mode === 'fs' ? persistent : 0);
       if (e.mode === 'fs') persistent = out.ev.persistentAfter;
@@ -232,7 +243,8 @@ function verify(mode, expected) {
     });
     const fin = b.events[b.events.length - 1];
     if (sum !== pm || fin.type !== 'finalWin' || fin.win !== pm) throw new Error(`${mode}: book ${b.id} events do not add up to its payout`);
-    if (mode === 'bonus' && !b.events.some(e => e.type === 'freeSpinsTrigger') && pm < MAX_X100) throw new Error(`${mode}: book ${b.id} has no free spins`);
+    const start = MODES[mode].opts.super ? E.SUPER_START : undefined;
+    if (isBuy(mode) && !b.events.some(e => e.type === 'freeSpinsTrigger' && e.start === start) && pm < MAX_X100) throw new Error(`${mode}: book ${b.id} has no free spins (starting at ${start || 0}x)`);
     if (pm > maxPm) maxPm = pm;
   });
   if (maxPm !== MAX_X100) throw new Error(`${mode}: no book reaches the max win`);
@@ -244,35 +256,48 @@ function verify(mode, expected) {
 
 (async () => {
   const want = (A.modes ? String(A.modes).split(',') : Object.keys(MODES));
+  for (const m of want) if (!MODES[m]) throw new Error('unknown mode ' + m);
   fs.mkdirSync(OUT, { recursive: true });
   log(`exporting ${want.join(', ')} to ${OUT} with ${WORKERS} workers (scale ${SCALE})`);
+  // with --modes, the other modes already in OUT stay as they are
+  const readJson = f => { try { return JSON.parse(fs.readFileSync(path.join(OUT, f), 'utf8')); } catch (e) { return null; } };
+  const prevIndex = (A.modes && readJson('index.json')) || { modes: [] }, prevSummary = (A.modes && readJson('summary.json')) || { modes: {} };
 
-  // how often a free-spins feature reaches the cap (measured on bonus rounds)
-  // (every bonus round played counts, including the max-win search's)
-  const bonusSample = await runJob('sample', 'bonus', { freegame: SIZES.bonus.freegame });
-  const capRun = await runJob('caprate', 'bonus', {}, CAPRATE_ROUNDS);
-  const bonusSearch = await runJob('wincap', 'bonus', { wincap: SIZES.bonus.wincap });
-  const capped = bonusSample.counts.wincap + capRun.counts.wincap + bonusSearch.counts.wincap;
-  const features = bonusSample.attempts + capRun.attempts + bonusSearch.attempts;
-  const qCap = capped / features;
-  log(`feature cap rate: ${capped} in ${features} bonus rounds (1 in ${Math.round(1 / qCap).toLocaleString()})`);
+  // how often a buy mode's feature reaches the cap (every round of that mode played counts, the
+  // max-win search's included); bonus rounds also give base and ante theirs
+  const buyRuns = {};
+  async function buyMode(mode) {
+    if (buyRuns[mode]) return buyRuns[mode];
+    const sample = await runJob('sample', mode, { freegame: SIZES[mode].freegame });
+    const capRun = await runJob('caprate', mode, {}, CAPRATE_ROUNDS);
+    const search = await runJob('wincap', mode, { wincap: SIZES[mode].wincap });
+    const capped = sample.counts.wincap + capRun.counts.wincap + search.counts.wincap;
+    const features = sample.attempts + capRun.attempts + search.attempts;
+    const qCap = capped / features;
+    log(`${mode}: feature cap rate ${capped} in ${features} rounds (1 in ${Math.round(1 / qCap).toLocaleString()})`);
+    return (buyRuns[mode] = { sample, search, qCap });
+  }
+  if (want.some(m => !isBuy(m)) || want.includes('bonus')) await buyMode('bonus');
 
-  const index = { modes: [] }, summary = { generated: new Date().toISOString(), targetRtp: TARGET_RTP * 100, scale: SCALE, workers: WORKERS, featureCapRate: qCap, modes: {} };
+  const index = { modes: [] }, summary = { generated: new Date().toISOString(), targetRtp: TARGET_RTP * 100, scale: SCALE, workers: WORKERS,
+    featureCapRate: buyRuns.bonus ? buyRuns.bonus.qCap : prevSummary.featureCapRate, modes: {} };
   const info = {};
   for (const mode of want) {
     const sizes = SIZES[mode];
     let sample, probs;
-    if (mode === 'bonus') {
-      sample = bonusSample;
-      probs = { freegame: 1 - qCap, wincap: qCap };
+    if (isBuy(mode)) {
+      const b = await buyMode(mode);
+      sample = b.sample;
+      probs = { freegame: 1 - b.qCap, wincap: b.qCap };
     } else {
+      const qCap = buyRuns.bonus.qCap;
       sample = await runJob('sample', mode, { '0': sizes['0'], basegame: sizes.basegame, freegame: sizes.freegame });
       const n = sample.attempts, pTrig = sample.counts.triggered / n, pCap = pTrig * qCap;
       probs = { '0': sample.counts['0'] / n, basegame: sample.counts.basegame / n, freegame: Math.max(0, sample.counts.freegame / n + sample.counts.wincap / n - pCap), wincap: pCap };
       log(`${mode}: ${n.toLocaleString()} rounds sampled, free spins 1 in ${Math.round(1 / pTrig)}`);
     }
     // the max-win bucket: natural capped rounds from the sample plus a search
-    const search = mode === 'bonus' ? bonusSearch : await runJob('wincap', mode, { wincap: sizes.wincap });
+    const search = isBuy(mode) ? buyRuns[mode].search : await runJob('wincap', mode, { wincap: sizes.wincap });
     log(`${mode}: ${search.kept.wincap.length} max-win rounds found in ${search.attempts.toLocaleString()} searched`);
     const buckets = {
       '0': sample.kept['0'] || [], basegame: sample.kept.basegame || [], freegame: sample.kept.freegame || [],
@@ -289,12 +314,23 @@ function verify(mode, expected) {
       bytes: { books: fs.statSync(path.join(OUT, files.booksFile)).size, weights: fs.statSync(path.join(OUT, files.csvFile)).size } };
     info[mode] = { cost: MODES[mode].cost, rtp: +st.rtp.toFixed(2), maxWinX: st.maxWinX };
   }
+  // the modes not exported this time keep their entries, in MODES order
+  for (const m of Object.keys(MODES)) {
+    if (want.includes(m)) continue;
+    const e = prevIndex.modes.find(x => x.name === m), sm = prevSummary.modes[m];
+    if (!e || !sm || !fs.existsSync(path.join(OUT, e.events)) || !fs.existsSync(path.join(OUT, e.weights))) continue;
+    index.modes.push(e); summary.modes[m] = sm;
+    info[m] = { cost: sm.cost, rtp: +sm.rtp.toFixed(2), maxWinX: sm.maxWinX };
+  }
+  const order = Object.keys(MODES);
+  index.modes.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+  summary.modes = Object.fromEntries(order.filter(m => summary.modes[m]).map(m => [m, summary.modes[m]]));
   fs.writeFileSync(path.join(OUT, 'index.json'), JSON.stringify(index, null, 2) + '\n');
   fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
-  if (!A['no-info'] && want.length === Object.keys(MODES).length) {
+  if (!A['no-info'] && index.modes.length === order.length) {
     fs.writeFileSync(path.join(root, 'js', 'math-info.js'),
       '/* Generated by tools/export-math.js from the published Stake math. Do not edit. */\n' +
-      'window.GOS_MATH = ' + JSON.stringify({ targetRtp: TARGET_RTP * 100, maxWinX: E.MAX_WIN_X, modes: info }, null, 2) + ';\n');
+      'window.GOS_MATH = ' + JSON.stringify({ targetRtp: TARGET_RTP * 100, maxWinX: E.MAX_WIN_X, modes: Object.fromEntries(order.map(m => [m, info[m]])) }, null, 2) + ';\n');
     log('wrote js/math-info.js');
   }
   log('done');

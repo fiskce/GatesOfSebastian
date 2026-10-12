@@ -15,7 +15,8 @@
  *      every winning spin for the rest of the feature.
  *  - 4+ scatters award 15 free spins; 3+ during the feature add +5
  *  - Ante Bet: +25% stake for a higher natural free-spins chance
- *  - Buy Free Spins: 100x stake
+ *  - Buy Free Spins: 100x stake. Super Free Spins: 500x stake, and the feature's
+ *    persistent multiplier starts at 100x
  *  - Max win 5,000x per round (base spin + any feature it triggers)
  */
 (function (root, factory) {
@@ -29,6 +30,7 @@
   const SCATTER = 'scatter';
   const MAX_WIN_X = 5000;
   const BUY_COST_X = 100, ANTE_COST = 1.25;
+  const SUPER_COST_X = 500, SUPER_START = 100;     // Super Free Spins: price, and the multiplier its feature starts at
 
   // pays are x total bet for 8-9 / 10-11 / 12+ of a kind. Every pay is a whole number of tenths:
   // Stake's math verification only accepts payouts in 0.1x steps (multipliers are whole numbers)
@@ -67,6 +69,9 @@
     baseOrbChance: 0.1427, // per winning tumble step (base game)
     fsOrbChance: 0.528,    // per winning tumble step (free spins)
     fsOrbDouble: 0.26,     // chance a spawning free-spins step drops a 2nd orb
+    // v11: per winning tumble step in a Super Free Spins feature (starts at 100x). tools/sim.js, 800k
+    // features: the 500x buy returns 96.54% +- 0.09 (feature 482.5x, max win 1 in ~3,900 buys)
+    superOrbChance: 0.464,
     reelW: { crown: 6, ring: 8, glass: 10, chalice: 12, red: 14, purple: 15, green: 16, blue: 18, gold: 20 },
   };
   let REEL = [];
@@ -146,8 +151,8 @@
     return out;
   }
 
-  function spawnOrbs(g, removeSet, rng, inFreeSpins) {
-    const chance = inFreeSpins ? CONFIG.fsOrbChance : CONFIG.baseOrbChance;
+  function spawnOrbs(g, removeSet, rng, inFreeSpins, orbChance) {
+    const chance = orbChance != null ? orbChance : inFreeSpins ? CONFIG.fsOrbChance : CONFIG.baseOrbChance;
     if (rng() >= chance) return [];
     const count = inFreeSpins && rng() < CONFIG.fsOrbDouble ? 2 : 1;
     const free = [];
@@ -164,7 +169,7 @@
   /* Resolve ONE spin from a starting board: every tumble step, the orbs that
    * landed and the final board. Does not apply multipliers (see evaluate). */
   function resolveSpin(board, opts) {
-    const rng = opts.rng, inFreeSpins = !!opts.inFreeSpins, pScatter = opts.pScatter;
+    const rng = opts.rng, inFreeSpins = !!opts.inFreeSpins, pScatter = opts.pScatter, orbChance = opts.orbChance;
     let g = board.slice();
     const steps = [];
     let tumbleWinX = 0;
@@ -177,7 +182,7 @@
       let stepWinX = 0;
       for (const w of wins) { stepWinX += w.payX; for (const c of w.cells) removeSet.add(c); }
       tumbleWinX += stepWinX;
-      const orbs = spawnOrbs(g, removeSet, rng, inFreeSpins);
+      const orbs = spawnOrbs(g, removeSet, rng, inFreeSpins, orbChance);
       for (const o of orbs) orbValues.push(o.value);
       const before = g;
       g = tumble(g, removeSet, rng, pScatter);
@@ -198,27 +203,30 @@
   }
 
   /* One spin, start to finish: draws the board (or a bonus-buy board), resolves
-   * it and evaluates it. mode: 'base' | 'ante' | 'fs'. */
+   * it and evaluates it. mode: 'base' | 'ante' | 'fs'. opts.super: a free spin of
+   * a Super Free Spins feature (its own orb chance). */
   function playSpin(rng, mode, opts) {
     opts = opts || {};
     const inFreeSpins = mode === 'fs';
     const pScatter = pScatterFor(mode);
     let board = newBoard(rng, pScatter);
     if (opts.buy) board = plantScatters(board, SCATTERS_FS, rng);
-    const res = resolveSpin(board, { rng, inFreeSpins, pScatter });
+    const orbChance = inFreeSpins && opts.super ? CONFIG.superOrbChance : undefined;
+    const res = resolveSpin(board, { rng, inFreeSpins, pScatter, orbChance });
     const ev = evaluate(res, inFreeSpins, opts.persistent || 0);
     return { board, res, ev, pScatter };
   }
 
-  /* A complete free-spins feature from 0 persistent multiplier (pure totals).
-   * `rec`, when given, receives every spin as it is played (see playRoundDetailed). */
-  function playFeature(rng, capX, rec) {
-    let spins = FS_AWARD, persistent = 0, totalX = 0, played = 0, retriggers = 0;
+  /* A complete free-spins feature (pure totals), from a persistent multiplier of 0,
+   * or of SUPER_START for Super Free Spins (isSuper). `rec`, when given, receives
+   * every spin as it is played (see playRoundDetailed). */
+  function playFeature(rng, capX, rec, isSuper) {
+    let spins = FS_AWARD, persistent = isSuper ? SUPER_START : 0, totalX = 0, played = 0, retriggers = 0;
     const cap = capX == null ? MAX_WIN_X : capX;
     while (spins > 0) {
       spins--; played++;
       const persistentBefore = persistent;
-      const s = playSpin(rng, 'fs', { persistent });
+      const s = playSpin(rng, 'fs', { persistent, super: isSuper });
       persistent = s.ev.persistentAfter;
       totalX += s.ev.winX;
       const retrigger = s.res.scatters >= SCATTERS_RETRIG;
@@ -231,7 +239,7 @@
   }
 
   /* A complete round (one paid spin + any feature it triggers), in x bet units,
-   * capped at MAX_WIN_X. opts: {rng, ante, buy} */
+   * capped at MAX_WIN_X. opts: {rng, ante, buy, super} (super implies buy) */
   function playRound(opts) { return round(opts, null).totalX; }
 
   /* The same round, keeping every spin it played (the Stake math export turns
@@ -240,15 +248,15 @@
 
   function round(opts, rec) {
     const rng = opts.rng || Math.random;
-    const buy = !!(opts.buy || opts.forceBonus);
+    const isSuper = !!opts.super, buy = !!(opts.buy || opts.forceBonus || isSuper);
     const mode = opts.ante && !buy ? 'ante' : 'base';
     const s = playSpin(rng, mode, { buy });
     let totalX = Math.min(s.ev.winX, MAX_WIN_X);
     if (rec) rec.push({ mode, buy, out: s, persistentBefore: 0, retrigger: false, capped: s.ev.winX >= MAX_WIN_X });
     const triggered = buy || s.res.scatters >= SCATTERS_FS;
     let feature = null;
-    if (triggered && totalX < MAX_WIN_X) { feature = playFeature(rng, MAX_WIN_X - totalX, rec); totalX += feature.totalX; }
-    return { totalX: Math.min(totalX, MAX_WIN_X), triggered, feature };
+    if (triggered && totalX < MAX_WIN_X) { feature = playFeature(rng, MAX_WIN_X - totalX, rec, isSuper); totalX += feature.totalX; }
+    return { totalX: Math.min(totalX, MAX_WIN_X), triggered, feature, start: isSuper ? SUPER_START : 0 };
   }
 
   // force at least n scatters onto a board (bonus buy)
@@ -345,13 +353,14 @@
   }
 
   /* A detailed round as book events plus its payout in hundredths of the bet.
-   * Each spin carries its share of the payout; the shares add up exactly. */
+   * Each spin carries its share of the payout; the shares add up exactly. A Super
+   * Free Spins trigger carries the multiplier the feature starts at (start). */
   function roundEvents(r) {
     const events = [];
     const push = e => { e.index = events.length; events.push(e); return e; };
     let sumX100 = 0, baseX100 = 0, fsX100 = 0, inFs = false;
     for (const sp of r.spins) {
-      if (sp.mode === 'fs' && !inFs) { inFs = true; push({ type: 'freeSpinsTrigger', spins: FS_AWARD }); }
+      if (sp.mode === 'fs' && !inFs) { inFs = true; push(r.start ? { type: 'freeSpinsTrigger', spins: FS_AWARD, start: r.start } : { type: 'freeSpinsTrigger', spins: FS_AWARD }); }
       let w = Math.round(sp.out.ev.winX * 100);
       if (sp.capped || sumX100 + w > MAX_WIN_X * 100) w = MAX_WIN_X * 100 - sumX100;
       sumX100 += w;
@@ -366,7 +375,7 @@
   }
 
   return {
-    COLS, ROWS, CELLS, MIN_CLUSTER, SCATTER, MAX_WIN_X, BUY_COST_X, ANTE_COST,
+    COLS, ROWS, CELLS, MIN_CLUSTER, SCATTER, MAX_WIN_X, BUY_COST_X, ANTE_COST, SUPER_COST_X, SUPER_START,
     SYMBOLS, PAY_ORDER, FS_AWARD, FS_RETRIGGER, SCATTERS_FS, SCATTERS_RETRIG,
     ORB_TABLE, CONFIG, configure, pScatterFor,
     makeRng, newBoard, findWins, countScatters, tumble, spawnOrbs,

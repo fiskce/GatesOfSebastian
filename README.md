@@ -1,6 +1,6 @@
 # Thunder Hunter Sebastian ⚡
 
-A tumbling, pay-anywhere slot (v10 "Forged Storm", formerly *Gates of Sebastian*). Sebastian the hunter stands on a cloud, shotgun in one hand and his fox in the other, and fires multiplier orbs into the board. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies.
+A tumbling, pay-anywhere slot (v11 "Super Storm", formerly *Gates of Sebastian*). Sebastian the hunter stands on a cloud, shotgun in one hand and his fox in the other, and fires multiplier orbs into the board. Everything is drawn on a single HTML5 canvas, with no build step and no dependencies.
 
 It runs two ways:
 
@@ -21,7 +21,16 @@ python3 -m http.server 8000      # then visit http://localhost:8000
 
 Opening `index.html` straight from disk also works, but the browser then blocks the fonts and sound files, so you get fallback fonts, and the sound effects are rendered in the browser from the same recipes the sound sheets were made from (the music stays silent). Offline/install support also needs it to be served (https or localhost).
 
-**Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet (hold − / + to keep stepping; tap BET to pick any level), T toggles turbo, B buys free spins, A opens autoplay, M mutes and I opens the rules. Taps skip win celebrations. A control that can't be used right now is unlit and says why when pressed. The rules list every control.
+**Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet (hold − / + to keep stepping; tap BET to pick any level), T toggles turbo, B opens the buy menu (free spins or super free spins), A opens autoplay, M mutes and I opens the rules. Taps skip win celebrations. A control that can't be used right now is unlit and says why when pressed. The rules list every control.
+
+## What's new in v11: Super Free Spins and bigger moments
+
+- **Super Free Spins, 500×.** BUY now opens a menu of two: the regular 15 free spins for 100×, or **Super Free Spins** for 500×. These are the same 15 free spins, but the total multiplier **starts at ×100**: it forms over the board and is charged into the multiplier well before the first spin, and every orb adds to it. The price returns exactly 96.50% like every other mode. Super features' orbs land a little less often (0.464 per winning tumble instead of 0.528; the rules say so), measured with `tools/sim.js` over 800,000 features. 5,000× comes about once in 3,700 buys. Stake's verification script passes the new mode inside every 3-star volatility limit.
+- **The math only grew.** `tools/export-math.js --modes super` exports one mode and merges it into `math/`. Base, Double Chance and the 100× buy keep their v10.3 books byte for byte, and the payout fingerprint test is unchanged.
+- **The feature ending matches the result.** A total at or below what the round cost (the bet, 100× or 500×) gets a quiet card with the total: no fanfare, coins or rays, and never "YOU WON $0.00". Above it, the total counts up, and from 15× it climbs the big-win tiers on their enamel plates, longer for each tier.
+- **The 5,000× max win has its own moment.** A double lightning strike whitens the screen, then the MAX WIN crest stamps in over a storm of rays while the round total counts up to the cap.
+- **Retriggers:** a +5 card flies into the Spin button, which counts the new spins in one by one.
+- **No celebration at or below the stake.** A win that doesn't beat what the spin cost updates WIN with a soft tick, with no coins or win sounds.
 
 ## What's new in v10.3: BET shows the Double Chance total
 
@@ -100,7 +109,7 @@ A five-lens review of v10 (game flow, Stake fit, audio, rendering, DOM), each fi
 - No service worker, manifest, provably-fair panel, stats or "reset balance" in Stake or replay play, and nothing written to the console (`?debug=1` turns diagnostics on).
 
 **Stake math files** (`tools/export-math.js`, output in `math/`)
-- Books are played by this repo's engine, so they are exactly what the demo plays: `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base` (cost 1), `ante` (1.25) and `bonus` (100).
+- Books are played by this repo's engine, so they are exactly what the demo plays: `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base` (cost 1), `ante` (1.25), `bonus` (100) and `super` (500).
 - Books are sampled in buckets (0 / base-game win / free spins / max win) with their natural probabilities. Max-win rounds are found by search, so 5,000× is in every mode. Weights are then scaled so each mode's RTP is exactly **96.50%** (the scaling stays within 3% of natural). The exporter reads every file back from disk and checks ids, weights, payouts and every event against the engine.
 - `js/math-info.js` (generated) carries the RTP and max win the rules show.
 
@@ -109,6 +118,7 @@ A five-lens review of v10 (game flow, Stake fit, audio, rendering, DOM), each fi
 | base | 142,512 | 96.5000% | 26.1% | 5,000× | 1 in 2.0 million | 0.986 |
 | ante | 142,509 | 96.5000% | 26.0% | 5,000× | 1 in 1.2 million | 0.978 |
 | bonus | 45,024 | 96.5000% | 99.2% | 5,000× | 1 in 7,476 buys | 1.023 |
+| super | 30,022 | 96.5000% | 99.2% | 5,000× | 1 in 3,674 buys | 1.007 |
 
 Stake's own `rgs_verification.py` passes on these files (see [STAKE.md](STAKE.md)).
 
@@ -214,7 +224,7 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 - **Tumble:** winners are removed, the rest fall and new symbols drop in. This repeats while wins keep forming.
 - **Multiplier orbs:** 2, 3, 4, 5, 6, 8, 10, 25, 50, 100, 250 or 500×. In the base game, the orbs from one spin add up and multiply that spin.
 - **Free spins:** 4+ scatters award 15 spins. Every orb is saved into a total multiplier that applies to each winning spin. 3+ scatters in the feature add +5.
-- **Double Chance:** costs 1.25× the bet (BET shows the total while it is on); free spins trigger more often. **Buy:** 100× bet, with ante off.
+- **Double Chance:** costs 1.25× the bet (BET shows the total while it is on); free spins trigger more often. **Buy:** 100× bet, with ante off. **Super buy:** 500× bet, free spins start at ×100.
 - **Max win:** 5,000× the bet per round; reaching it ends the round, free spins included.
 - Scatters are counted once all tumbles have finished and don't win on their own.
 

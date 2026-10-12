@@ -1,6 +1,6 @@
 # Thunder Hunter Sebastian on Stake Engine
 
-How to rebuild, upload and submit the game, and how it meets Stake's approval checklist. Version **10.3**.
+How to rebuild, upload and submit the game, and how it meets Stake's approval checklist. Version **11.0**.
 
 ## What to upload
 
@@ -8,12 +8,12 @@ How to rebuild, upload and submit the game, and how it meets Stake's approval ch
 
 | Folder | What it is | Where it goes |
 |---|---|---|
-| `stake/frontend/` | The game: a static build with `index.html` at its root, 59 files, 10.1 MB | The game's **Files** page: import the whole folder, then **Publish Game → Front End** |
-| `stake/math/` | `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base`, `ante` and `bonus`, 49.3 MB | The game's **Files** page: import the folder, then **Publish Game → Math** |
+| `stake/frontend/` | The game: a static build with `index.html` at its root, 59 files, 10.2 MB | The game's **Files** page: import the whole folder, then **Publish Game → Front End** |
+| `stake/math/` | `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base`, `ante`, `bonus` and `super`, 61.7 MB | The game's **Files** page: import the folder, then **Publish Game → Math** |
 | `stake/replay-events.json` | One book per replay case and mode (below) | Paste into the approval request |
 | `stake/build.json` | Version, math hash, size and sha256 of every file | For your records: proves which files were submitted |
 
-The front end carries `js/build.js` with `target: 'stake'` and the hash of the math it was tested with (`684d406e5d36`).
+The front end carries `js/build.js` with `target: 'stake'` and the hash of the math it was tested with (`9ad21fb946cf`).
 
 ## Rebuilding
 
@@ -22,6 +22,7 @@ Needs **Node 22.15+** (its built-in zstd), and Playwright's Chromium for the smo
 ```bash
 node tools/sim.js                     # optional: measure RTP in parts after changing the math
 node tools/export-math.js --scale 1.5 # the books (~9 minutes on 4 cores), writes math/ and js/math-info.js
+node tools/export-math.js --modes super --scale 1.5   # one mode only, merged into math/ (the others stay byte-identical)
 node tools/test.js                    # unit checks, including the published math and the package
 node tools/build-stake.js             # stake/ and the copy in the game host repo
 node tools/smoke-stake.js             # the package, end to end, at Stake's sizes (about 20 minutes; --only recovery,social runs parts)
@@ -38,10 +39,11 @@ Each mode's RTP is exactly **96.50%** (weights scaled from the engine's natural 
 | `base` | 1× | 142,512 | 96.50% | 26.1% (1 in 3.8) | 5,000× | 1 in 2,022,238 spins |
 | `ante` (Double Chance) | 1.25× | 142,509 | 96.50% | 26.0% (1 in 3.8) | 5,000× | 1 in 1,154,175 spins |
 | `bonus` (buy free spins) | 100× | 45,024 | 96.50% | 99.2% | 5,000× | 1 in 7,476 buys |
+| `super` (buy super free spins) | 500× | 30,022 | 96.50% | 99.2% | 5,000× | 1 in 3,674 buys |
 
-Free spins trigger about 1 in 276 base spins and 1 in 158 with Double Chance. The books were sampled at `--scale 1.5` and re-weighted to the exact RTP by 0.986 (base), 0.978 (ante) and 1.023 (bonus).
+Free spins trigger about 1 in 276 base spins and 1 in 158 with Double Chance. Super Free Spins are the same 15 free spins with a total multiplier that starts at ×100; their orbs land a little less often (0.464 per winning tumble, against 0.528) so the 500× price returns 96.5% on its own (`tools/sim.js`, 800k features: 96.54% ± 0.09). The books were sampled at `--scale 1.5` and re-weighted to the exact RTP by 0.986 (base), 0.978 (ante), 1.023 (bonus) and 1.007 (super). v11 added `super` with `--modes super`, so the other three modes' files are byte for byte the v10.3 ones.
 
-**Stake's verification script** (`utils/rgs_verification.py` from StakeEngine/math-sdk) passes on `stake/math`: no assertion, books and lookup tables agree; RTP 0.965 in every mode, smallest win 0.3×, max 5,000×. It prints one warning, for `bonus`: `etl40b` 1.62 against a limit of 0.9 (base 0.52 and ante 0.71 are within it). That's a 3-star volatility guideline, not a rule; a 100× buy in a game with 500× orbs has a heavy top end by design. (The v10.1 math, with Topaz at 0.25×/0.75×, fails it: "Payout values must be in increments of 10.")
+**Stake's verification script** (`utils/rgs_verification.py` from StakeEngine/math-sdk) passes on `stake/math`: no assertion, books and lookup tables agree in all four modes; RTP 0.965 in every mode, smallest win 0.3×, max 5,000×. `super` is inside every 3-star volatility limit (`etl40b` 0, `cvar` 8.6). It prints one warning, for `bonus`: `etl40b` 1.62 against a limit of 0.9 (base 0.52 and ante 0.71 are within it). That's a 3-star volatility guideline, not a rule; a 100× buy in a game with 500× orbs has a heavy top end by design. (The v10.1 math, with Topaz at 0.25×/0.75×, fails it: "Payout values must be in increments of 10.")
 
 ## Launching
 
@@ -52,24 +54,25 @@ Stake opens the game as `https://{team}.cdn.stake-engine.com/{game}/{version}/in
 - `social=true`, an XSC/XGC currency or the RGS's `socialCasino` flag switches every visible string to the social wording.
 - `lang`: English only (Stake requires only English); other values don't break anything.
 
-**Replays:** `index.html?replay=true&game={game UUID}&version={math version}&mode={base|ante|bonus}&event={book id}&rgs_url=…[&amount=…&currency=…&social=…]`. All of `game`, `version`, `mode` and `event` are required. A missing one, an unknown mode, an event the RGS can't find (`NOT_FOUND`) and a round that doesn't add up each get their own message.
+**Replays:** `index.html?replay=true&game={game UUID}&version={math version}&mode={base|ante|bonus|super}&event={book id}&rgs_url=…[&amount=…&currency=…&social=…]`. All of `game`, `version`, `mode` and `event` are required. A missing one, an unknown mode, an event the RGS can't find (`NOT_FOUND`) and a round that doesn't add up each get their own message.
 
 ## Replay events for the review
 
 Book ids per mode (also in `stake/replay-events.json`, with ready-made mock and Stake URLs):
 
-| Mode | Loss | Normal win | Big win (15×+) | Bonus trigger | Win cap (5,000×) |
+| Mode | Loss | Normal win | Big win (15×+; for a buy 15× its cost, at most 2,500×) | Bonus trigger | Win cap (5,000×) |
 |---|---|---|---|---|---|
 | `base` | 1 (0×) | 30001 (4.8×) | 30113 (23×) | 120001 (7.4×) | 142501 |
 | `ante` | 1 (0×) | 30003 (6×) | 30103 (18.6×) | 120001 (39.1×) | 142501 |
 | `bonus` | 262 (0×) | 1 (145.8×) | 384 (1,960.1×) | 1 (every buy) | 45001 |
+| `super` | 137 (0×) | 3 (314.6×) | 456 (2,566.6×) | 1 (every buy, 50×) | 30001 |
 
 ## Jurisdiction flags
 
 | Flag | What the game does |
 |---|---|
 | `socialCasino` | Social wording everywhere (as `social=true`) |
-| `disabledBuyFeature` | No buy button, no B key, not in the rules |
+| `disabledBuyFeature` | No buy button (neither buy), no B key, not in the rules |
 | `disabledAutoplay` | No autoplay button, no A key, not in the rules |
 | `disabledTurbo` | No turbo, and a saved turbo setting is ignored |
 | `disabledSuperTurbo` | Read; the game has no super turbo |
@@ -93,10 +96,10 @@ How the game meets the items of Stake's checklist (docs: approval).
 | [59] [63] [191] Bet levels | Only the RGS's `betLevels` (or min/max/step), its default first. With Double Chance on, BET and the level grid show what a spin costs (the level × 1.25, in the currency's decimals); `/wallet/play` still sends the level with mode `ante` |
 | [187] Refresh keeps the bet | The open or last round's bet, else the last one chosen in that currency |
 | [66] Uses `rgs_url` | Every call goes to `rgs_url`; nothing is hard-coded |
-| [24]–[29] Rules | Every symbol's wins, the RTP and max win of each mode, how wins form, each mode's description and cost, free spins and retriggers, the multiplier orbs |
+| [24]–[29] Rules | Every symbol's wins, the RTP and max win of each mode, how wins form, each mode's description and cost, free spins and retriggers, Super Free Spins (start at ×100, orbs a little less often), the multiplier orbs |
 | [185] Disclaimer | Malfunction voids plays, reload resumes, long-run RTP, illustrative display, the RGS settles wins, © notice |
 | [193]–[195] Desktop, mobile, popouts | Checked at 1200×675, 1024×576, 800×450, 400×225, 425×812, 375×667 and 320×568: nothing scrolls, text at least 11 px (8 px at 400×225), touch targets 44 px (36 px compact) |
-| [31] Confirm modes over 2× | Buying free spins (100×) opens a confirmation first |
+| [31] Confirm modes over 2× | BUY opens a menu of the two buys, each with its price and its own Buy button (free spins 100×, super free spins 500×); nothing is bought until one is pressed |
 | [104] Autoplay | Its own sheet with a Start button; limits on loss, single win and free spins; one click never starts more than the chosen rounds |
 | [107] Sound off | M, the sound button and the settings (master, music and effects volume) |
 | [44] Space spins | Space or Enter (unless `disabledSpacebar`) |

@@ -165,6 +165,26 @@ button:hover { filter: brightness(1.1); } button:active { transform: translateY(
 button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .btn-row { display: flex; gap: 10px; margin-top: 8px; } .btn-row > * { flex: 1; margin-top: 8px !important; }
 .big-price { font-family: var(--display); font-weight: 900; font-size: 40px; color: var(--gold-hi); margin: 6px 0 4px; text-shadow: 0 0 18px rgba(255, 170, 60, .6); }
+/* the buy menu: two tiers side by side (stacked on narrow screens) */
+.card.buy-card { width: min(620px, 100%); }
+.buy-tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.buy-tier { display: flex; flex-direction: column; padding: 12px 12px 14px; border-radius: 14px; border: 1px solid var(--ink-3);
+  background: var(--ink-1); box-shadow: inset 0 1px 0 rgba(120, 132, 210, .25); }
+.buy-tier h3 { margin: 2px 0 6px; }
+.buy-tier .big-price { font-size: 34px; }
+.buy-tier button.primary { margin-top: auto; }
+.buy-tier .buy-why { min-height: 1.2em; margin: 0 0 8px; }
+.buy-tier.super { border-color: #a8472a; background: radial-gradient(120% 90% at 50% 0%, #3c1620, var(--ink-1) 70%);
+  box-shadow: inset 0 1px 0 rgba(255, 170, 120, .3), 0 0 18px rgba(255, 110, 40, .18); }
+.buy-tier.super h3 { color: #ffc89a; }
+.buy-tier.off { opacity: .55; }
+/* stacked only on narrow portrait screens: short landscape popouts keep both tiers side by side */
+@media (max-width: 520px) and (orientation: portrait) {
+  .buy-tiers { grid-template-columns: 1fr; gap: 10px; }
+  .buy-tier { padding: 8px 10px 10px; } .buy-tier h3 { margin: 0 0 2px; } .buy-tier p { margin: 2px 0 !important; }
+  .buy-tier .big-price { font-size: 26px; margin: 2px 0; } .buy-tier .buy-why { min-height: 0; margin: 0 0 4px; }
+  .buy-tier button.primary { margin-top: 4px; }
+}
 .menu-item { display: block; width: 100%; margin: 8px 0; text-align: left; color: var(--text); background: rgba(255, 255, 255, .05); border: 1px solid #4a3a78; }
 
 .fair-box { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.7; color: #bfe6ff; word-break: break-all;
@@ -210,6 +230,11 @@ table.history { width: 100%; border-collapse: collapse; font-size: 13px; }
   .card { padding: 12px 12px 10px; max-height: 94vh; }
   .card h2 { font-size: 17px; margin-bottom: 6px; }
   .card p { font-size: 13px; margin: 4px 0; }
+  .buy-tier { padding: 6px 8px 8px; } .buy-tier .big-price { font-size: 22px; margin: 0; } .buy-tier h3 { font-size: 12px; margin: 0 0 2px; }
+  .buy-tier p { font-size: 11px !important; margin: 0 !important; } .buy-tier .buy-why { min-height: 0; }
+  .card.buy-card button.ghost, .buy-tier button.primary { margin-top: 4px; min-height: 36px; padding: 6px 12px; }
+  .card.buy-card h2 { margin-bottom: 4px; } .buy-tiers { gap: 8px; }
+  .card.buy-card > button.ghost { display: none; }      /* the X closes it: both buys fit without scrolling */
   .facts { font-size: 12px; } .facts div { padding: 2px 0; }
   .replay-facts { margin: 2px 0 6px; }
   button.primary, button.ghost { margin-top: 8px; padding: 8px 12px; }
@@ -267,8 +292,10 @@ button.primary { color: var(--text-1); border: 1px solid #4a5390; background: li
   box-shadow: inset 0 1px 0 rgba(160, 170, 240, .45), inset 0 0 0 2px #262b55, inset 0 0 0 3px rgba(242, 201, 90, .55); min-height: 44px; }
 button.ghost { color: var(--text-2); border: 1px solid var(--ink-3); min-height: 44px; }
 button.small { color: var(--text-1); background: var(--ink-3); }
-#buyConfirm { color: #fff3e8; border: 1px solid #f2c95a; background: radial-gradient(circle at 30% 20%, #9a2234, #7A1322 45%, #3A0710);
+#buyConfirm, #buyConfirmSuper { color: #fff3e8; border: 1px solid #f2c95a; background: radial-gradient(circle at 30% 20%, #9a2234, #7A1322 45%, #3A0710);
   box-shadow: inset 0 1px 0 rgba(255, 220, 210, .35); }
+#buyConfirmSuper { border-color: #ffb46b; background: radial-gradient(circle at 30% 20%, #c4482a, #8a2414 45%, #3A0710); }
+#buyConfirm:disabled, #buyConfirmSuper:disabled { filter: grayscale(.7) brightness(.7); cursor: not-allowed; }
 .menu-item { color: var(--text-1); background: var(--ink-1); border: 1px solid var(--ink-3); min-height: 44px; }
 .big-price { color: var(--gold-hi); }
 .switch { background: var(--ink-0); border: 1px solid var(--ink-3); box-shadow: inset 0 2px 3px rgba(0, 0, 0, .6); }

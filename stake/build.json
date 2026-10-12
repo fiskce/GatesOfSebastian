@@ -1,7 +1,7 @@
 {
   "game": "Thunder Hunter Sebastian",
-  "version": "10.3",
-  "mathHash": "684d406e5d36",
+  "version": "11.0",
+  "mathHash": "9ad21fb946cf",
   "frontend": {
     "assets/fonts/cinzel-latin-700-normal.woff2": {
       "bytes": 15184,
@@ -88,12 +88,12 @@
       "sha256": "baa18f20a45d12394fec3df9658ca3675813b7643532a74342e26f393890b8b2"
     },
     "css/style.css": {
-      "bytes": 23847,
-      "sha256": "975c79004529818fd389cb531e40be28934c9460b1e39f387accdea0cc073b7e"
+      "bytes": 25993,
+      "sha256": "06527c83c0cefb7cb70773bf581b519b8a2548dbb1d9ebca42bf3b04eb7c07ca"
     },
     "index.html": {
-      "bytes": 13737,
-      "sha256": "f6e24755d922d7d4224c50cc4e0879452ece1edd015c59c1b95857bd719d3c86"
+      "bytes": 14510,
+      "sha256": "14f00f7701131d83354a5edba8bba7c4f04e160f13225400a4f720c1bbf94115"
     },
     "js/audio.js": {
       "bytes": 30009,
@@ -105,15 +105,15 @@
     },
     "js/build.js": {
       "bytes": 198,
-      "sha256": "3f7853be25ce9598aa18ee7e763e1152ed9f98c6f978eb75ec884ca216802499"
+      "sha256": "bb128d3739906c9adda6228846f6270af89289cf0fb60e35482b95b6f38b2f76"
     },
     "js/core.js": {
-      "bytes": 24659,
-      "sha256": "5671f6dde1c3db53f90fa2ae8f1b396f813df423339a54353fc518964cc66404"
+      "bytes": 24727,
+      "sha256": "2b003e9f825d4fcfaaf58674decac7a20a7aeefdd6d2c59c74cc16f5ca6dd26d"
     },
     "js/engine.js": {
-      "bytes": 16566,
-      "sha256": "cabb4da9a1f6bacb7a23323be8455f5da671d87e25eb1e7f96c151c2d64ff8e6"
+      "bytes": 17665,
+      "sha256": "a38e634bc322de4e982af6e64b1762e052ff654d81e9149b668bfb8ef0cbd00e"
     },
     "js/fair.js": {
       "bytes": 6224,
@@ -124,32 +124,32 @@
       "sha256": "886b29656a2b72ec0087a4ddf9ff05988eff5470a28515d844199ede7f9d241d"
     },
     "js/game.js": {
-      "bytes": 51127,
-      "sha256": "1e6a1dcc3c297edb766e0fe69cd7fe45587eaea9037b712b99b0b4d68735a6e4"
+      "bytes": 54130,
+      "sha256": "c398959be87a26fd3f9fb376e13e09bd3c752bff77b9c877728fd4110d0c3b4a"
     },
     "js/hud.js": {
-      "bytes": 54608,
-      "sha256": "4802958e465cbd32f5aaa92c87c3e53b416876bf0a5002ea9cb8723807b54e3f"
+      "bytes": 55589,
+      "sha256": "9e5059066962daab27e4c586d2d06840f4e6e73a51f2b1dfe317462545fe510a"
     },
     "js/materials.js": {
       "bytes": 14027,
       "sha256": "11f34e11100827c58ac6b51c949607e4da7488b6ad92faa78ef4b1f5609ba0aa"
     },
     "js/math-info.js": {
-      "bytes": 406,
-      "sha256": "0b6e611d8e1bf0b3b969cb5a7d2722a2da136215e81cad2a276b8a47da2d3e20"
+      "bytes": 488,
+      "sha256": "458b60080803126f8a58492a105202750f0115a729755ee0a14a3d34b1c15dde"
     },
     "js/music.js": {
       "bytes": 5454,
       "sha256": "da69fcdd9b306de5bdea21c92b7afbfa66f5042cfc37fd01ba1389635ce75cfa"
     },
     "js/overlays.js": {
-      "bytes": 22235,
-      "sha256": "6047e0cc3e3ee6d4e11fb9036334c44b57cd4e519436cb13251aac88b9fb4fa7"
+      "bytes": 33973,
+      "sha256": "012bf96c0fff52811179b5b28f44ce4dceb672fde5c41327bee30f05bdd0804b"
     },
     "js/rgs.js": {
-      "bytes": 13631,
-      "sha256": "8ae515c7c5b4976ddf150a0ac9d7cb2dd0ae9e7ddc60fff28919c1030aa7804c"
+      "bytes": 13964,
+      "sha256": "b7845c8eb55a475d54d63ca8fe91b72664cb06ba6b1c77fc793fbed9b738a9f1"
     },
     "js/scene.js": {
       "bytes": 60432,
@@ -172,16 +172,16 @@
       "sha256": "83ee251ed6ffdc33d9786e48273faabe9824631661856c9dbb3a765a36328de1"
     },
     "js/strings.js": {
-      "bytes": 9540,
-      "sha256": "a8819d907d1ed6c6fa164f2659cf2da9563a770c81533e40ece5a7e2d38ce177"
+      "bytes": 9829,
+      "sha256": "d1ef76d0c47a20a56bf14ca0a276ad33c3993f8d22e317a9c44b41ab13112ef2"
     },
     "js/symbols.js": {
       "bytes": 8677,
       "sha256": "7669da74fbb2eda50e619ced311140e4d48295f5c92078ed815e4170263fffa7"
     },
     "js/ui.js": {
-      "bytes": 23094,
-      "sha256": "2db52981aacbb529e169d8b08f083721e664797e1210cc2d75ab13ccc278b046"
+      "bytes": 24708,
+      "sha256": "7f64350e57e4bebb18bb2403f04ba031967bfa049c531f9dd4821886f173443c"
     },
     "LICENSE": {
       "bytes": 35149,
@@ -253,9 +253,13 @@
       "bytes": 18279028,
       "sha256": "ca14cbca4ba44b408e3e8b36a5fa1e52e7a9e9707e156811191499e7c51f9c1d"
     },
+    "books_super.jsonl.zst": {
+      "bytes": 12359499,
+      "sha256": "9b2dce0be3c14818327897e6710442168cccfe7ffc776d4fb2eb39d4e0ce0c9e"
+    },
     "index.json": {
-      "bytes": 430,
-      "sha256": "e3bc676c4825df29cfe490ab4f8e0ba2785ec7960a93b113b6e399ea3a33bf62"
+      "bytes": 569,
+      "sha256": "53d4befdfd781b5b603c07a85c8b9b0c1e7f6af2ec0ad512fca90220a5e16616"
     },
     "lookUpTable_ante_0.csv": {
       "bytes": 2942523,
@@ -268,6 +272,10 @@
     "lookUpTable_bonus_0.csv": {
       "bytes": 1024414,
       "sha256": "4f55dce24ca41cce4db5f7dfe03095b74c2061b3c0cd889e62ebb7fc9157f72e"
+    },
+    "lookUpTable_super_0.csv": {
+      "bytes": 708967,
+      "sha256": "842c2bb4f5ca0e55fee808f04f1d720589fb1642e8c1e238d269a68a27aa9a0f"
     }
   }
 }

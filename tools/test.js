@@ -79,15 +79,16 @@ ok('every pay is a whole number of tenths of the bet (Stake accepts payouts in 0
 });
 // ---- Stake math export: rounds as book events ----
 // a frozen copy of the v8 playRound, to prove playRoundDetailed draws the same numbers
+// (v11: plus Super Free Spins, whose feature starts at SUPER_START with its own orb chance)
 function playRoundV8(opts) {
-  const rng = opts.rng, buy = !!opts.buy;
+  const rng = opts.rng, sup = !!opts.super, buy = !!opts.buy || sup;
   const s = E.playSpin(rng, opts.ante && !buy ? 'ante' : 'base', { buy });
   let totalX = Math.min(s.ev.winX, E.MAX_WIN_X);
   if ((buy || s.res.scatters >= E.SCATTERS_FS) && totalX < E.MAX_WIN_X) {
-    let spins = E.FS_AWARD, persistent = 0, fx = 0; const cap = E.MAX_WIN_X - totalX;
+    let spins = E.FS_AWARD, persistent = sup ? E.SUPER_START : 0, fx = 0; const cap = E.MAX_WIN_X - totalX;
     while (spins > 0) {
       spins--;
-      const f = E.playSpin(rng, 'fs', { persistent });
+      const f = E.playSpin(rng, 'fs', { persistent, super: sup });
       persistent = f.ev.persistentAfter; fx += f.ev.winX;
       if (f.res.scatters >= E.SCATTERS_RETRIG) spins += E.FS_RETRIGGER;
       if (fx >= cap) { fx = cap; break; }
@@ -96,9 +97,10 @@ function playRoundV8(opts) {
   }
   return Math.min(totalX, E.MAX_WIN_X);
 }
-const ROUND_MODES = [['base', {}], ['ante', { ante: true }], ['bonus', { buy: true }]];
-ok('detailed rounds pay exactly what playRound pays (20,000 rounds per mode)', () => {
-  for (const [name, o] of ROUND_MODES) for (let s = 1; s <= (name === 'bonus' ? 4000 : 20000); s++) {
+const ROUND_MODES = [['base', {}], ['ante', { ante: true }], ['bonus', { buy: true }], ['super', { super: true }]];
+const isBuy = name => name === 'bonus' || name === 'super';
+ok('detailed rounds pay exactly what playRound pays (20,000 rounds per mode, 4,000 per buy)', () => {
+  for (const [name, o] of ROUND_MODES) for (let s = 1; s <= (isBuy(name) ? 4000 : 20000); s++) {
     const a = playRoundV8({ rng: E.makeRng(s), ...o }), r = E.playRoundDetailed({ rng: E.makeRng(s), ...o });
     assert.strictEqual(r.totalX, a, name + ' seed ' + s);
     assert.strictEqual(E.playRound({ rng: E.makeRng(s), ...o }), a);
@@ -121,13 +123,14 @@ ok('every spin survives the trip through a book event unchanged (30,000 spins)',
   }
 });
 ok('round events add up to the payout and replay through expandSpin', () => {
-  for (const [name, o] of ROUND_MODES) for (let s = 1; s <= (name === 'bonus' ? 1500 : 6000); s++) {
+  for (const [name, o] of ROUND_MODES) for (let s = 1; s <= (isBuy(name) ? 1500 : 6000); s++) {
     const r = E.playRoundDetailed({ rng: E.makeRng(s), ...o });
     const { events, payoutX100 } = E.roundEvents(r);
     assert.strictEqual(payoutX100, Math.round(r.totalX * 100));
     let persistent = 0, sum = 0;
     events.forEach((e, i) => assert.strictEqual(e.index, i));
-    for (const e of events) if (e.type === 'spin') {
+    for (const e of events) if (e.type === 'freeSpinsTrigger') persistent = e.start || 0;
+    else if (e.type === 'spin') {
       const out = E.expandSpin(JSON.parse(JSON.stringify(e)), e.mode === 'fs' ? persistent : 0);
       if (e.mode === 'fs') persistent = out.ev.persistentAfter;
       sum += e.win;
@@ -136,6 +139,24 @@ ok('round events add up to the payout and replay through expandSpin', () => {
     assert.strictEqual(events[events.length - 1].type, 'finalWin');
     assert.strictEqual(events[events.length - 1].win, payoutX100);
   }
+});
+ok('Super Free Spins start at x100 (the trigger event says so) and only their free spins use the super orb chance', () => {
+  assert.ok(E.SUPER_COST_X === 500 && E.SUPER_START === 100 && E.CONFIG.superOrbChance < E.CONFIG.fsOrbChance);
+  let features = 0;
+  for (let s = 1; s <= 600; s++) {
+    const r = E.playRoundDetailed({ rng: E.makeRng(s), super: true }), { events } = E.roundEvents(r);
+    const trig = events.find(e => e.type === 'freeSpinsTrigger'), first = r.spins.find(sp => sp.mode === 'fs');
+    if (!trig) { assert.strictEqual(r.totalX, E.MAX_WIN_X); continue; }      // only a capped paid spin skips the feature
+    features++;
+    assert.strictEqual(trig.start, E.SUPER_START); assert.strictEqual(first.persistentBefore, E.SUPER_START);
+    assert.ok(r.spins.filter(sp => sp.mode === 'fs').every(sp => sp.out.ev.persistentAfter >= E.SUPER_START));
+  }
+  assert.ok(features > 590);
+  // a regular buy's trigger carries no start, and its feature starts at 0
+  const r = E.playRoundDetailed({ rng: E.makeRng(7), buy: true });
+  assert.strictEqual(E.roundEvents(r).events.find(e => e.type === 'freeSpinsTrigger').start, undefined);
+  // the super flag only matters in free spins: a base spin draws the same either way
+  assert.deepStrictEqual(E.playSpin(E.makeRng(9), 'base', { super: true }).board, E.playSpin(E.makeRng(9), 'base').board);
 });
 ok('a tampered book event is rejected', () => {
   let seed = 1, out;
@@ -177,9 +198,9 @@ ok('the published Stake math matches the engine and the rules', () => {
   const fs = require('fs'), zlib = require('zlib'), dir = path.join(__dirname, '..', 'math');
   if (!fs.existsSync(path.join(dir, 'index.json'))) { console.log('      (no math/ export; skipped)'); return; }
   const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
-  const cost = { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X };
+  const cost = { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X, super: E.SUPER_COST_X };
   const info = (() => { const w = {}; require('vm').runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'math-info.js'), 'utf8'), { window: w }); return w.GOS_MATH; })();
-  assert.deepStrictEqual(index.modes.map(m => m.name).sort(), ['ante', 'base', 'bonus']);
+  assert.deepStrictEqual(index.modes.map(m => m.name), ['base', 'ante', 'bonus', 'super']);
   const summary = JSON.parse(fs.readFileSync(path.join(dir, 'summary.json'), 'utf8'));
   for (const m of index.modes) {
     // re-weighting to exactly 96.5% stays within 3% of the game's natural odds
@@ -200,7 +221,8 @@ ok('the published Stake math matches the engine and the rules', () => {
     const lines = zlib.zstdDecompressSync(fs.readFileSync(path.join(dir, m.events))).toString().trim().split('\n');
     for (let i = 0; i < lines.length; i += Math.max(1, Math.floor(lines.length / 400))) {
       const b = JSON.parse(lines[i]); let persistent = 0, sum = 0;
-      for (const e of b.events) if (e.type === 'spin') { const o = E.expandSpin(e, e.mode === 'fs' ? persistent : 0); if (e.mode === 'fs') persistent = o.ev.persistentAfter; sum += e.win; }
+      for (const e of b.events) if (e.type === 'freeSpinsTrigger') persistent = e.start || 0;
+      else if (e.type === 'spin') { const o = E.expandSpin(e, e.mode === 'fs' ? persistent : 0); if (e.mode === 'fs') persistent = o.ev.persistentAfter; sum += e.win; }
       assert.strictEqual(sum, b.payoutMultiplier, m.name + ' book ' + b.id);
     }
   }
@@ -274,18 +296,18 @@ ok('amounts never show more decimals than the currency has (no $3.025)', () => {
     assert.ok(/^\$[\d,]+\.\d{2}$/.test(s), s);
   }
 });
-ok('the service worker is v10 and clears only older v10 caches (every version shares the origin)', async () => {
+ok('the service worker is v11 and clears only older v11 caches (every version shares the origin)', async () => {
   const vm = require('vm'), sw = require('fs').readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-  assert.ok(/VERSION = 'gos10-core-\d+'/.test(sw) && /MEDIA = VERSION\.replace\('-core-', '-media-'\)/.test(sw));
+  assert.ok(/VERSION = 'gos11-core-\d+'/.test(sw) && /MEDIA = VERSION\.replace\('-core-', '-media-'\)/.test(sw));
   // run the real activate step against a fake Cache Storage holding this game's caches from every version, and another app's
   const version = sw.match(/VERSION = '([^']+)'/)[1], media = version.replace('-core-', '-media-');
-  const keys = [version, media, 'gos10-core-1', 'gos10-core-2', 'gos10-media', 'gos10-media-2', 'gos9-core-3', 'gos9-media', 'gos8-core-2', 'other-app-cache', 'workbox-precache'];
+  const keys = [version, media, 'gos11-core-0', 'gos11-media', 'gos10-core-6', 'gos10-media-6', 'gos9-core-3', 'gos9-media', 'gos8-core-2', 'other-app-cache', 'workbox-precache'];
   const deleted = [], on = {};
   const self = { addEventListener: (t, f) => { on[t] = f; }, clients: { claim: () => Promise.resolve() }, skipWaiting() {}, registration: { scope: 'https://x/' } };
   vm.runInNewContext(sw, { self, caches: { keys: async () => keys, delete: async k => { deleted.push(k); return true; } }, Promise, URL, setTimeout, Request: function () {}, Response: function () {} });
   let done; on.activate({ waitUntil: p => { done = p; } });
   await done;
-  assert.deepStrictEqual(deleted.sort(), ['gos10-core-1', 'gos10-core-2', 'gos10-media', 'gos10-media-2'].filter(k => k !== version && k !== media).sort());
+  assert.deepStrictEqual(deleted.sort(), ['gos11-core-0', 'gos11-media'].filter(k => k !== version && k !== media).sort());
 });
 ok('the game writes nothing to the console (Stake play logs nothing; ?debug=1 routes through G.log)', () => {
   const fs = require('fs'), dir = path.join(__dirname, '..', 'js');

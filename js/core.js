@@ -152,7 +152,7 @@ window.GOS = (() => {
   G.S = {
     credit: G.START_CREDIT, betIndex: 7, ante: false,
     busy: false, started: false,
-    inFS: false, fsLeft: 0, fsPlayed: 0, fsTotal: 0, fsAward: 0, persistent: 0, roundWin: 0,
+    inFS: false, superFS: false, fsLeft: 0, fsPlayed: 0, fsTotal: 0, fsAward: 0, persistent: 0, roundWin: 0,
     spinMult: 0,           // orbs collected during the current base spin
     tumbleWin: 0, tumbleShown: 0, winDisplay: 0, lastWin: 0, cascade: 0,
     auto: 0, autoMenu: false,
@@ -168,6 +168,7 @@ window.GOS = (() => {
   // what BET shows: what a spin costs (Double Chance's 25% included while it is on); the RGS still gets the level
   G.betShown = () => G.spinCost();
   G.buyCost = () => G.baseBet() * E.BUY_COST_X;
+  G.superCost = () => G.baseBet() * E.SUPER_COST_X;
 
   // ---------------- persistence (best effort) ----------------
   // v9 has its own key; the first visit carries the v8/v7 balance and settings over.

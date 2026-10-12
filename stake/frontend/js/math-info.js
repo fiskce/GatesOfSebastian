@@ -17,6 +17,11 @@ window.GOS_MATH = {
       "cost": 100,
       "rtp": 96.5,
       "maxWinX": 5000
+    },
+    "super": {
+      "cost": 500,
+      "rtp": 96.5,
+      "maxWinX": 5000
     }
   }
 };

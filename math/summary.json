@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-12T13:57:14.239Z",
+  "generated": "2026-10-12T17:30:57.039Z",
   "targetRtp": 96.5,
   "scale": 1.5,
   "workers": 4,
@@ -79,6 +79,30 @@
       "bytes": {
         "books": 18279028,
         "weights": 1024414
+      }
+    },
+    "super": {
+      "cost": 500,
+      "books": 30022,
+      "buckets": {
+        "0": 0,
+        "basegame": 0,
+        "freegame": 30000,
+        "wincap": 22
+      },
+      "probabilities": {
+        "freegame": 0.9997265946367809,
+        "wincap": 0.00027340536321902506
+      },
+      "reweight": 1.007027637782035,
+      "rtp": 96.5,
+      "hitRate": 0.991647,
+      "maxWinX": 5000,
+      "totalWeight": "1004404889972934",
+      "rawBookBytes": 74100091,
+      "bytes": {
+        "books": 12359499,
+        "weights": 708967
       }
     }
   }

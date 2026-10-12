@@ -111,7 +111,7 @@
   }
   G.betMicro = () => (G.BET_MICRO ? G.BET_MICRO[S.betIndex] : Math.round(G.baseBet() * API));
   // what a round costs in this mode, in millionths, worked out in integers
-  const COST100 = { base: 100, ante: Math.round(E.ANTE_COST * 100), bonus: E.BUY_COST_X * 100 };
+  const COST100 = { base: 100, ante: Math.round(E.ANTE_COST * 100), bonus: E.BUY_COST_X * 100, super: E.SUPER_COST_X * 100 };
   R.costMicro = (mode, amount) => (amount * COST100[mode]) / 100;
 
   const authenticate = () => {
@@ -184,7 +184,7 @@
     R.replay.amount = micro;
   })();
   // the modes this game publishes (index.json); a replay of anything else can't be shown
-  R.modes = () => Object.keys((window.GOS_MATH && GOS_MATH.modes) || { base: 1, ante: 1, bonus: 1 });
+  R.modes = () => Object.keys((window.GOS_MATH && GOS_MATH.modes) || { base: 1, ante: 1, bonus: 1, super: 1 });
   R.fetchReplay = async () => {
     const p = R.replay, enc = encodeURIComponent;
     if (!R.base || !p.game || !p.version || !p.event || R.modes().indexOf(p.mode) < 0) throw new RgsError('REPLAY_PARAMS');
@@ -205,6 +205,7 @@
     try {
       for (const e of events) {
         if (!e) continue;
+        if (e.type === 'freeSpinsTrigger') persistent = +e.start || 0;     // Super Free Spins start at 100x
         if (e.type === 'spin') {
           const out = E.expandSpin(JSON.parse(JSON.stringify(e)), e.mode === 'fs' ? persistent : 0);
           if (e.mode === 'fs') persistent = out.ev.persistentAfter;
@@ -249,8 +250,10 @@
   // A round's spins as the game asks for them, rebuilt from book events.
   R.eventSource = events => {
     const spins = events.filter(e => e && e.type === 'spin');
+    const trigger = events.find(e => e && e.type === 'freeSpinsTrigger');
     let i = 0;
     return {
+      start: trigger ? +trigger.start || 0 : 0,     // the multiplier the feature starts at (Super Free Spins)
       next(mode, o) {
         const e = spins[i++];
         if (!e) throw new RgsError('ERR_STATE', 'the round ran out of spins');

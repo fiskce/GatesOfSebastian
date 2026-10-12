@@ -4,7 +4,7 @@
  *   node tools/build-stake.js && node tools/smoke-stake.js            (needs Playwright's Chromium)
  *   node tools/smoke-stake.js --shots <dir>                            also saves screenshots
  *   node tools/smoke-stake.js --only recovery,social                   just those parts
- *     (sizes, ante, session, replays, flags, recovery, social)
+ *     (sizes, ante, buy, session, replays, flags, recovery, social)
  *
  * Two mock RGS processes (tools/mock-rgs.js): one only serves stake/frontend (the "CDN"), the other is
  * the RGS on a different origin, playing stake/math. Input is real (trusted) clicks and key presses.
@@ -14,6 +14,8 @@
  *   - requests go only to files of the package or to the RGS's API; nothing at all on the console
  * Double Chance (1200x675, 425x812, 400x225): BET and the bet grid show what a spin costs (level x 1.25)
  * while /wallet/play still sends the level with mode ante, and the balance drops by the cost;
+ * The buy menu (1200x675, 400x225): both prices, and a Super Free Spins buy sends mode super with the bet
+ * level, starts the feature at x100 and settles to the book's payout;
  * and once: no session -> a blocking error and no wallet calls; every replay case in
  * replay-events.json plays its exact payout (and a broken/unknown/missing replay says so); the
  * regulated-market flags show net position, RTP and session time; a dropped /wallet/play (win and
@@ -164,6 +166,32 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id, ha
       await sleep(700);
       const off = await page.evaluate(() => ({ texts: [...window.__texts], ante: GOS.S.ante }));
       check(`${vp.join('x')}: Double Chance off, BET is back to ${level}`, !off.ante && (off.texts.includes(level) || off.texts.includes('BET ' + level)) && !rec.console.length, rec.console.slice(0, 2).join(' | '));
+      await ctx.close();
+    }
+
+    // ---- the buy menu: Free Spins and Super Free Spins; a super buy plays its book from x100
+    if (part('buy')) for (const vp of [[1200, 675], [400, 225]]) {
+      const id = 'buy' + vp.join('x'), book = EV.super.normalWin;
+      await session(id, { force: { super: book.event } });
+      const before = await balanceOf(id);
+      const { ctx, page, rec } = await open(browser, stakeUrl(id), vp);
+      await play(page);
+      const bet = await page.evaluate(() => GOS.betMicro()), usd = m => '$' + (m / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2 });
+      await page.keyboard.press('b');
+      await page.waitForFunction(() => !document.getElementById('m-buy').hidden, null, { timeout: 5000 }).catch(() => {});
+      const menu = await page.evaluate(() => ({ a: document.getElementById('buyPrice').textContent, b: document.getElementById('buyPriceSuper').textContent,
+        ok: !document.getElementById('buyConfirmSuper').disabled, scroll: (c => c.scrollHeight > c.clientHeight + 1)(document.querySelector('#m-buy .card')) }));
+      if (shots) await page.screenshot({ path: path.join(shots, `buy_${vp.join('x')}.png`) });
+      check(`${vp.join('x')}: the buy menu shows both prices (${usd(bet * 100)} and ${usd(bet * 500)}) without scrolling`, menu.a === usd(bet * 100) && menu.b === usd(bet * 500) && menu.ok && !menu.scroll, JSON.stringify(menu));
+      await page.click('#buyConfirmSuper');
+      const started = await page.waitForFunction(() => GOS.S.inFS && GOS.S.superFS && GOS.S.persistent >= 100, null, { timeout: 30000, polling: 50 }).then(() => true, () => false);
+      await idle(page);
+      const plays = (await (await fetch(RGS + '/mock/log')).json()).filter(l => l.path === '/wallet/play' && l.body && l.body.sessionID === id);
+      const after = await balanceOf(id), st = await page.evaluate(() => ({ micro: GOS.RGS.balanceMicro, won: GOS.S.roundWin }));
+      const want = before - bet * 500 + Math.round(bet * book.payoutMultiplier);
+      check(`${vp.join('x')}: a super buy sends mode super with the bet level, starts at x100 and settles to the book (${book.payoutMultiplier}x)`,
+        started && plays.length === 1 && plays[0].body.mode === 'super' && plays[0].body.amount === bet && after === want && st.micro === after && Math.abs(st.won - book.payoutMultiplier * bet / 1e6) < 1e-6 && !rec.console.length,
+        JSON.stringify({ started, plays: plays.map(l => l.body), after, want, st, console: rec.console.slice(0, 2) }));
       await ctx.close();
     }
 

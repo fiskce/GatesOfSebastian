@@ -3,7 +3,7 @@
  *
  *   node tools/build-stake.js                  # writes stake/ and copies it to the game host repo
  *   node tools/build-stake.js --no-host        # stake/ only
- *   node tools/build-stake.js --out <dir> --version 10.3 --host <dir>
+ *   node tools/build-stake.js --out <dir> --version 11.0 --host <dir>
  *
  * stake/
  *   frontend/            upload this folder on the game's Files page (index.html at its root)
@@ -25,7 +25,7 @@ const crypto = require('crypto');
 const { refs, all } = require('./assets.js');
 
 const ROOT = path.join(__dirname, '..');
-const VERSION = '10.3';
+const VERSION = '11.0';
 const MAX_X100 = 500000;
 // never in the Stake package
 const FORBIDDEN = [/^sw\.js$/, /^manifest\.json$/, /^assets\/icons\/(icon-|apple-touch)/, /^assets\/video\//, /^js\/preroll\.js$/,
@@ -79,13 +79,14 @@ function replayEvents(mathDir) {
     const rows = fs.readFileSync(path.join(mathDir, m.weights), 'utf8').trim().split('\n').map(l => l.split(',').map(Number));
     const books = zlib.zstdDecompressSync(fs.readFileSync(path.join(mathDir, m.events))).toString().trim().split('\n');
     const crit = id => JSON.parse(books[id - 1]).criteria;
-    const x = pm => pm / 100, cost = m.cost, bonus = m.name === 'bonus';
+    // buy modes (bonus 100x, super 500x): every round is a feature; a big win is 15x the cost, or half the cap
+    const x = pm => pm / 100, cost = m.cost, bonus = m.name === 'bonus' || m.name === 'super', big = Math.min(15 * cost, MAX_X100 / 200);
     const find = pred => { for (const [id, , pm] of rows) if (pred(id, pm)) return id; return null; };
     const minPm = rows.reduce((m, r) => Math.min(m, r[2]), Infinity);
     const cases = {
       loss: find((id, pm) => pm === minPm),
       normalWin: bonus ? find((id, pm) => x(pm) >= 0.5 * cost && x(pm) <= 1.5 * cost) : find((id, pm) => x(pm) >= cost && x(pm) <= 5 * cost && crit(id) === 'basegame'),
-      bigWin: bonus ? find((id, pm) => x(pm) >= 15 * cost && pm < MAX_X100) : find((id, pm) => x(pm) >= 15 && pm < MAX_X100 && crit(id) === 'basegame') || find((id, pm) => x(pm) >= 15 && pm < MAX_X100),
+      bigWin: bonus ? find((id, pm) => x(pm) >= big && pm < MAX_X100) : find((id, pm) => x(pm) >= 15 && pm < MAX_X100 && crit(id) === 'basegame') || find((id, pm) => x(pm) >= 15 && pm < MAX_X100),
       bonusTrigger: bonus ? rows[0][0] : find(id => crit(id) === 'freegame'),
       winCap: find((id, pm) => pm === MAX_X100),
     };

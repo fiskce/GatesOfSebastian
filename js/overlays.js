@@ -1,5 +1,6 @@
 /* Thunder Hunter Sebastian — overlays: big-win count-up, free-spins intro/outro,
- * banners, the multiplier slam and small win pops. Each overlay is an item
+ * the max win, retriggers, the Super Free Spins charge, banners, the multiplier
+ * slam and small win pops. Each overlay is an item
  * with update/draw; game.js awaits the promise each show* call returns.
  * Tap / click / Space calls G.skip(), which fast-forwards whatever is showing.
  */
@@ -7,7 +8,7 @@
   'use strict';
   const G = window.GOS, FX = G.FX, B = G.Board;
   const O = G.Overlay = { items: [] };
-  const S = G.S;
+  const S = G.S, E_MAX = G.E.MAX_WIN_X;
 
   const TIERS = [[15, 'tierBig'], [40, 'tierMega'], [100, 'tierEpic'], [500, 'tierLegend'], [5000, 'tierMax']];
   const tierName = i => G.T(TIERS[i][1]);
@@ -17,10 +18,13 @@
   const legible = ms => Math.max(ms, 600 * O.rate());
   O.tierFor = x => { let t = -1; TIERS.forEach((tt, i) => { if (x >= tt[0]) t = i; }); return t; };
   O.blocking = () => O.items.some(i => i.block);
-  // an amount being counted up on screen right now (big win, feature total): { shown, to }
+  // an amount being counted up on screen right now: { shown, to, big } (a spin's big win), or the
+  // max win's round total (round), or a feature total
   O.counting = () => {
     const it = O.items.find(i => i.block && (i.amount != null || i.total != null) && i.shown != null);
-    return it ? { shown: it.shown, to: it.amount != null ? it.amount : it.total, big: it.amount != null } : null;
+    if (!it) return null;
+    const round = it.kind === 'maxWin';
+    return { shown: it.shown, to: it.amount != null ? it.amount : it.total, big: it.amount != null && !round, round };
   };
 
   let raysC = null;
@@ -49,14 +53,14 @@
     p.lineTo(n, h); p.arc(0, h, n, 0, -Math.PI * 0.5, true); p.lineTo(0, n); p.arc(0, 0, n, Math.PI * 0.5, 0, true); p.closePath();
     return p;
   }
-  function enamelPlate(kind, w, h) {          // kind: a tier index, or 'fs'
+  function enamelPlate(kind, w, h) {          // kind: a tier index, 'fs', or 'super' (Super Free Spins: storm red)
     const key = kind + '|' + Math.round(w) + 'x' + Math.round(h) + '|' + G.DPR;
     let c = plateCache.get(key);
     if (c) return c;
     if (plateCache.size > 24) plateCache.clear();
     const M = G.Mat, pad = Math.ceil(h * 0.3), o = G.offscreen(w + pad * 2, h + pad * 2), x = o.x;
     x.translate(pad, pad);
-    const col = kind === 'fs' ? ['#c8681e', '#3a1404'] : ENAMEL[kind], n = Math.min(h * 0.3, w * 0.08), p = cartouche(w, h, n);
+    const col = kind === 'fs' ? ['#c8681e', '#3a1404'] : kind === 'super' ? ['#d8452a', '#3a0606'] : ENAMEL[kind], n = Math.min(h * 0.3, w * 0.08), p = cartouche(w, h, n);
     // the wide drop shadow is all low frequencies: bake it at a quarter of the resolution
     M.lowres(x, [-pad, -pad, w + pad * 2, h + pad * 2], 0.25, k => M.shadowOnly(k, kk => kk.fill(p), h * 0.25, 0, h * 0.08, 'rgba(0,0,0,.6)'));
     const g = x.createRadialGradient(w * 0.35, h * 0.15, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.62);
@@ -70,7 +74,7 @@
     x.restore();
     x.lineWidth = Math.max(2, Math.min(h * 0.07, 8)); x.strokeStyle = M.goldBar(x, 0, h); x.stroke(p);
     x.lineWidth = 1 / G.DPR; x.strokeStyle = 'rgba(42,20,4,.9)'; x.stroke(p);
-    const r = Math.min(h * 0.2, w * 0.05), by = kind === 'fs' ? h * 0.18 : h / 2;
+    const r = Math.min(h * 0.2, w * 0.05), by = kind === 'fs' || kind === 'super' ? h * 0.18 : h / 2;
     [n * 1.4 + r, w - n * 1.4 - r].forEach(bx => {
       const b = new Path2D();
       b.moveTo(bx + r * 0.2, by - r); b.lineTo(bx - r * 0.6, by + r * 0.12); b.lineTo(bx - r * 0.02, by + r * 0.12); b.lineTo(bx - r * 0.25, by + r); b.lineTo(bx + r * 0.62, by - r * 0.18); b.lineTo(bx + r * 0.04, by - r * 0.18); b.closePath();
@@ -197,7 +201,9 @@
   });
 
   // ---------------- free spins intro ----------------
-  O.fsIntro = (award, autoMs) => new Promise(res => {
+  // opts.super: Super Free Spins (storm-red cartouche, and the multiplier they start at)
+  O.fsIntro = (award, autoMs, opts) => new Promise(res => {
+    const sup = !!(opts && opts.super), start = (opts && opts.start) || 0;
     const it = { block: true, t: 0, phase: 'in', closeT: 0 };
     // the award counts in on brass shell clicks (32nds at the feature's 128 BPM), climbing the F pentatonic;
     // the card runs on the presentation clock, so under turbo the clicks keep pace with the digits
@@ -219,7 +225,7 @@
       const shown = Math.min(award, Math.floor(Math.max(0, it.t - 0.25) / 0.0586) + 1);
       ctx.save(); ctx.globalAlpha = G.clamp(a, 0, 1);
       backdrop(ctx, 0.85);
-      drawRays(ctx, c0.x, c0.y, m * 1.6, 0.4 * (1 - e));
+      drawRays(ctx, c0.x, c0.y, m * (sup ? 1.9 : 1.6), (sup ? 0.6 : 0.4) * (1 - e));
       if (!out) {           // four scatters orbit the card
         const n = 4, rx = Math.min(G.W * 0.44, m * 0.66), ry = m * 0.33;
         for (let j = 0; j < n; j++) {
@@ -231,14 +237,15 @@
       const pop = G.ease.outBack(G.clamp(it.t / 0.5, 0, 1));
       const pw = Math.min(G.W * 0.86, m * 1.1), ph = m * 0.5;
       ctx.translate(cx, cy); ctx.scale(k * pop, k * pop);
-      drawPlate(ctx, 'fs', 0, 0, pw, ph, 1);
-      G.text(ctx, G.T('congrats'), 0, -ph * 0.3, Math.max(11, m * 0.036), '#F4F1EA', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)', maxW: pw * 0.7 });
+      drawPlate(ctx, sup ? 'super' : 'fs', 0, 0, pw, ph, 1);
+      G.text(ctx, G.T(sup ? 'superFs' : 'congrats'), 0, -ph * 0.3, Math.max(11, m * 0.036), sup ? '#ffe2c4' : '#F4F1EA', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)', maxW: pw * 0.7 });
       G.goldText(ctx, String(shown), 0, -ph * 0.04, m * 0.2, { glow: 'rgba(255,140,30,.9)', tabular: true });
       G.goldText(ctx, G.T('fsAwarded'), 0, ph * 0.26, m * 0.075, { maxW: pw * 0.8 });
       ctx.restore();
       if (!out) {
         ctx.save(); ctx.globalAlpha = G.clamp(a, 0, 1);
-        G.text(ctx, G.T('fsSaved'), c0.x, c0.y + ph * 0.66, Math.max(11, m * 0.026), '#F4F1EA', { weight: 600, maxW: G.W * 0.9, shadow: 'rgba(0,0,0,.8)' });
+        if (sup) G.goldText(ctx, G.T('fsStartAt', { x: start }), c0.x, c0.y + ph * 0.66, Math.max(12, m * 0.042), { maxW: G.W * 0.9, glow: 'rgba(255,90,20,.9)' });
+        else G.text(ctx, G.T('fsSaved'), c0.x, c0.y + ph * 0.66, Math.max(11, m * 0.026), '#F4F1EA', { weight: 600, maxW: G.W * 0.9, shadow: 'rgba(0,0,0,.8)' });
         if (it.t > 0.8) G.text(ctx, G.T('tapStart'), c0.x, c0.y + ph * 0.82, Math.max(11, m * 0.03), `rgba(244,241,234,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 800 });
         ctx.restore();
       }
@@ -247,35 +254,194 @@
   });
 
   // ---------------- free spins outro ----------------
-  O.fsOutro = (total, spins, bet, autoMs) => new Promise(res => {
-    const it = { block: true, t: 0, phase: 'in', closeT: 0, shown: 0, total };
-    AudioEngine.duck(0.4, 4 / O.rate()); AudioEngine.play('fs.outro');
-    if (total / bet >= 15) G.Seb.cheer(1.2);
-    const countDur = total > 0 ? 1.8 : 0.01;
-    let ticked = 0;
-    const close = () => { if (it.phase === 'in') { it.phase = 'out'; it.closeT = it.t; AudioEngine.unduck(0.5); } };
-    it.skip = () => { if (it.t > 0.6) close(); };
-    it.update = () => {
-      if (it.phase === 'in' && it.t > 0.4 + autoMs / 1000) close();
-      const p = G.clamp((it.t - 0.3) / countDur, 0, 1);
-      it.shown = total * G.ease.outCubic(p);
-      if (p < 1 && it.t - ticked > 0.07) { ticked = it.t; AudioEngine.play('count.tick'); }
-      if (Math.random() < 0.3 && total > 0 && it.phase !== 'out') FX.coins(G.W / 2 + G.rand(-G.W * 0.25, G.W * 0.25), G.H + 20, 1, 30, G.H * 1.1);
+  /* Scaled to the result. A total at or below what the round cost (cost: the bet,
+   * or the buy price) is not celebrated: a quiet card with the total, no fanfare,
+   * coins or rays. Above it the total counts up, and from 15x it climbs the
+   * big-win tiers on their enamel plates, longer for each tier. A tap jumps to
+   * the total, a second tap closes. */
+  O.fsOutro = (total, spins, bet, autoMs, cost) => new Promise(res => {
+    const quiet = !(total > (cost || bet) + 1e-9), top = quiet ? -1 : O.tierFor(total / bet);
+    const countDur = quiet ? 0 : 1.8 + Math.max(0, top) * 1.1, hold = (autoMs || 6000) / 1000 * (quiet ? 0.6 : 1);
+    const it = { kind: 'outro', quiet, block: true, t: 0, phase: 'in', closeT: 0, shown: quiet ? total : 0, total, tier: -1, tierT: 0, landed: quiet };
+    AudioEngine.duck(0.4, (countDur + hold + 0.8) / O.rate());
+    let bed = null, tickT = 0;
+    if (!quiet) { AudioEngine.play('fs.outro'); if (total / bet >= 15) G.Seb.cheer(1.2); }
+    const close = () => { if (it.phase === 'in') { it.phase = 'out'; it.closeT = it.t; AudioEngine.unduck(0.5); if (bed) bed.stop(0.3); } };
+    const land = () => {                    // the count reaches the total: the final tier is stamped
+      if (it.landed) return;
+      it.landed = true; it.shown = total;
+      if (top > it.tier) { it.tier = top; it.tierT = it.t; }
+      if (top >= 0) { AudioEngine.play('slam', { variant: Math.min(3, top) }); FX.flash(0.6, '255,236,190'); FX.shake(8 + top * 3); for (let k = 0; k < 20 + top * 10; k++) FX.coins(G.W / 2, G.H * 0.62, 1, 60, G.H * 1.1, 3); }
+    };
+    it.skip = () => {
+      if (!it.landed) { it.t = Math.max(it.t, 0.3 + countDur); land(); }
+      else if (it.t > 0.6) close();
+    };
+    it.update = dt => {
+      if (it.phase === 'in' && !it.landed) {
+        const p = G.clamp((it.t - 0.3) / countDur, 0, 1);
+        it.shown = total * G.ease.outCubic(p);
+        const reached = Math.min(top, O.tierFor(it.shown / bet));
+        if (reached > it.tier) {
+          it.tier = reached; it.tierT = it.t; G.Seb.cheer(1 + reached * 0.3);
+          if (bed) bed.stop(0.3);
+          bed = AudioEngine.play('tier.' + Math.min(3, reached)); FX.flash(0.4, '255,230,160'); FX.shake(6 + reached * 3);
+        }
+        if ((tickT -= dt) <= 0) { tickT = 0.07; AudioEngine.play('count.tick'); }
+        if (p >= 1) land();
+      }
+      if (!quiet && it.phase !== 'out' && Math.random() < dt * (10 + Math.max(0, it.tier) * 8)) FX.coins(G.W / 2 + G.rand(-G.W * 0.25, G.W * 0.25), G.H + 20, 1, 30, G.H * 1.1);
+      if (it.phase === 'in' && it.landed && it.t > 0.4 + countDur + hold) close();
       if (it.phase === 'out' && it.t - it.closeT > 0.45) { it.dead = true; res(); }
     };
     it.draw = ctx => {
       const a = it.phase === 'out' ? 1 - (it.t - it.closeT) / 0.45 : fadeIn(it.t, 0.4);
       const cx = G.W / 2, cy = G.H * 0.46, m = Math.min(G.W, G.H);
-      ctx.save(); ctx.globalAlpha = a;
-      backdrop(ctx, 1);
-      drawRays(ctx, cx, cy, m * 1.5, 0.4);
-      G.goldText(ctx, G.T('fsComplete'), cx, cy - m * 0.18, m * 0.07, { maxW: G.W * 0.9, glow: 'rgba(255,140,30,.8)' });
-      G.text(ctx, G.T('youWon'), cx, cy - m * 0.07, m * 0.04, '#f6e3ff', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)' });
-      ctx.save(); ctx.translate(cx, cy + m * 0.05); ctx.scale(pulse(4), pulse(4));
-      G.goldText(ctx, G.countMoney(it.shown, it.total), 0, 0, m * 0.12, { display: false, weight: 800, tabular: true, maxW: G.W * 0.9, glow: 'rgba(255,190,60,.8)' });
+      ctx.save(); ctx.globalAlpha = G.clamp(a, 0, 1);
+      backdrop(ctx, quiet ? 0.85 : 1);
+      if (!quiet) { drawRays(ctx, cx, cy, m * 1.5 * (1 + Math.max(0, it.tier) * 0.1), 0.35 + Math.max(0, it.tier) * 0.06); FX.draw(ctx, 3); ctx.globalAlpha = G.clamp(a, 0, 1); }
+      G.goldText(ctx, G.T('fsComplete'), cx, cy - m * 0.2, m * 0.065, { maxW: G.W * 0.9, glow: quiet ? null : 'rgba(255,140,30,.8)' });
+      if (it.tier >= 0) {                     // the tier it stands on, stamped in as it climbs
+        const st = it.t - it.tierT, stamp = st < 0.35 ? 1.3 - 0.3 * G.ease.outBack(st / 0.35) : 1;
+        const pw = Math.min(G.W * 0.8, m * 0.9), ph = m * 0.13;
+        drawPlate(ctx, Math.min(4, it.tier), cx, cy - m * 0.08, pw, ph, stamp);
+        ctx.save(); ctx.translate(cx, cy - m * 0.08); ctx.scale(stamp, stamp);
+        G.goldText(ctx, tierName(it.tier), 0, 0, m * 0.075, { maxW: pw - ph * 1.8 });
+        ctx.restore();
+      } else G.text(ctx, G.T(quiet ? 'fsTotal' : 'youWon'), cx, cy - m * 0.08, m * 0.04, '#f6e3ff', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)' });
+      ctx.save(); ctx.translate(cx, cy + m * 0.05); if (!quiet) ctx.scale(pulse(4), pulse(4));
+      G.goldText(ctx, G.countMoney(it.shown, it.total), 0, 0, m * (quiet ? 0.1 : 0.12), { display: false, weight: 800, tabular: true, maxW: G.W * 0.9, glow: quiet ? null : 'rgba(255,190,60,.8)' });
       ctx.restore();
-      G.text(ctx, G.T('inSpins', { n: spins }), cx, cy + m * 0.16, m * 0.032, '#ffe9b0', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
-      if (it.t > 1) G.text(ctx, G.T('tapContinue'), cx, cy + m * 0.26, m * 0.026, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
+      G.text(ctx, G.T('inSpins', { n: spins }), cx, cy + m * 0.15, m * 0.032, '#ffe9b0', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
+      if (top >= 0) ladder(ctx, Math.max(0, it.tier), top, cx, cy + m * 0.22, m);
+      if (it.landed && it.t > 0.8) G.text(ctx, G.T('tapContinue'), cx, cy + m * (top >= 0 ? 0.29 : 0.26), m * 0.026, `rgba(255,236,190,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
+      ctx.restore();
+    };
+    O.items.push(it);
+  });
+
+  // ---------------- the max win: the round stops at 5,000x ----------------
+  /* A double lightning strike whitens the screen, then the MAX WIN crest stamps
+   * in over a storm of rays while the amount counts to the cap. A tap jumps to
+   * the end, a second tap closes. */
+  O.maxWin = (amount, bet, autoMs) => new Promise(res => {
+    const rm = G.settings.reducedMotion, strike = rm ? 0.25 : 0.9, count = 2.8, hold = (autoMs || 6000) / 1000;
+    const it = { kind: 'maxWin', block: true, t: 0, phase: 'strike', closeT: 0, shown: 0, amount, stampT: -9 };
+    AudioEngine.duck(0.35, (strike + count + hold + 0.6) / O.rate());
+    AudioEngine.play('thunder', { gain: 0.9 });
+    if (G.Scene) G.Scene.lightning(true);
+    FX.flash(0.9, '255,252,240'); FX.shake(18); FX.punch(0.05); G.haptic([80, 50, 80, 50, 160]);
+    let bed = null, tickT = 0, second = false;
+    G.Seb.cut = it; G.Seb.cheer(2); G.Seb.say('epic');
+    const finish = () => {
+      if (it.phase === 'hold' || it.phase === 'out') return;
+      it.phase = 'hold'; it.closeT = it.t; it.shown = amount; it.stampT = it.t;
+      if (bed) bed.stop(0.4);
+      AudioEngine.play('maxwin', { variant: 3 }); FX.flash(0.8, '255,240,190'); FX.shake(16);
+      for (let k = 0; k < 60; k++) FX.coins(G.W / 2, G.H * 0.62, 1, 70, G.H * 1.2, 3);
+    };
+    const out = () => { it.phase = 'out'; it.closeT = it.t; AudioEngine.unduck(0.6); FX.relayer(3, 2); };
+    it.skip = () => {
+      if (it.phase === 'strike' || it.phase === 'count') finish();
+      else if (it.phase === 'hold' && it.t - it.closeT > 0.3) out();
+    };
+    it.update = dt => {
+      if (!second && it.t > strike * 0.3) {   // the second strike of the pair
+        second = true; AudioEngine.play('thunder', { gain: 0.7 }); if (G.Scene) G.Scene.lightning(true); FX.flash(0.7, '255,252,240');
+      }
+      if (it.phase === 'strike' && it.t >= strike) { it.phase = 'count'; it.stampT = it.t; bed = AudioEngine.play('tier.3'); }
+      if (it.phase === 'count') {
+        const p = G.clamp((it.t - strike) / count, 0, 1);
+        it.shown = amount * (1 - Math.pow(1 - p, 1.7));
+        if ((tickT -= dt) <= 0) { tickT = 0.06; AudioEngine.play('count.tick', { gain: 0.8 }); }
+        if (Math.random() < dt * 40) FX.coins(G.W / 2 + G.rand(-G.W * 0.25, G.W * 0.25), G.H + 20, 1, 45, G.H * 1.3, 3);
+        if (p >= 1) finish();
+      } else if (it.phase === 'hold' && it.t - it.closeT > hold) out();
+      else if (it.phase === 'out' && it.t - it.closeT > 0.4) { it.dead = true; G.Seb.cut = null; res(); }
+    };
+    it.draw = ctx => {
+      const a = it.phase === 'out' ? 1 - (it.t - it.closeT) / 0.4 : fadeIn(it.t, 0.15);
+      const cx = G.W / 2, cy = G.H * 0.46, m = Math.min(G.W, G.H);
+      ctx.save(); ctx.globalAlpha = G.clamp(a, 0, 1);
+      backdrop(ctx, 1);
+      drawRays(ctx, cx, cy, m * 2.1, 0.55); drawRays(ctx, cx, cy, m * 1.3, 0.35);
+      FX.draw(ctx, 3);
+      ctx.globalAlpha = G.clamp(a, 0, 1); ctx.globalCompositeOperation = 'source-over';
+      G.Seb.drawCutIn(ctx, G.clamp(a, 0, 1), it.phase === 'out' ? 1 - (it.t - it.closeT) / 0.4 : it.t / 0.5);
+      if (it.phase !== 'strike') {
+        const st = it.t - it.stampT, stamp = st < 0.4 ? 1.45 - 0.45 * G.ease.outBack(st / 0.4) : 1;
+        const pw = Math.min(G.W * 0.9, m * 1.05), ph = m * 0.19;
+        drawPlate(ctx, 4, cx, cy - m * 0.14, pw, ph, stamp);
+        ctx.save(); ctx.translate(cx, cy - m * 0.14); ctx.scale(stamp, stamp);
+        G.goldText(ctx, G.T('maxWin'), 0, 0, m * 0.11, { maxW: pw - ph * 1.8, glow: 'rgba(255,200,80,.9)' });
+        ctx.restore();
+        ctx.save(); ctx.translate(cx, cy + m * 0.05);
+        const s2 = it.phase === 'count' ? 1 : 1 + Math.max(0, 1 - (it.t - it.closeT) / 0.3) * 0.18;
+        ctx.scale(s2, s2);
+        G.goldText(ctx, G.countMoney(it.shown, it.amount), 0, 0, m * 0.14, { display: false, weight: 800, tabular: true, maxW: G.W * 0.92, glow: 'rgba(255,190,60,.9)',
+          colors: ['#ffffff', '#fff1a8', '#ffcf3a', '#e08a12', '#ffe58a'] });
+        ctx.restore();
+        G.text(ctx, G.T('maxReached', { x: G.xfmt(E_MAX) }), cx, cy + m * 0.17, Math.max(11, m * 0.036), '#ffe9b0', { weight: 800, shadow: 'rgba(0,0,0,.8)' });
+        if (it.phase === 'hold') G.text(ctx, G.T('tapContinue'), cx, cy + m * 0.27, Math.max(11, m * 0.026), `rgba(244,241,234,${0.5 + 0.5 * Math.sin(G.clock.real * 4)})`, { weight: 700 });
+      }
+      G.Seb.drawCutBubble(ctx);
+      ctx.restore();
+      if (it.phase === 'strike') {              // the strike whitens the screen for a moment
+        const w = (1 - it.t / strike) * (rm ? 0.35 : 0.85);
+        ctx.save(); ctx.fillStyle = `rgba(255,252,240,${G.clamp(w, 0, 1)})`; ctx.fillRect(0, 0, G.W, G.H); ctx.restore();
+      }
+    };
+    O.items.push(it);
+  });
+
+  // ---------------- retrigger: +5 free spins fly into the Spin button ----------------
+  // onLand runs as the card reaches the button (the game counts the spins in there)
+  O.retrigger = (n, autoMs, onLand) => new Promise(res => {
+    const it = { kind: 'retrigger', block: true, t: 0, phase: 'in', closeT: 0 }, hold = (autoMs || 1300) / 1000;
+    const close = () => { if (it.phase === 'in') { it.phase = 'out'; it.closeT = it.t; } };
+    it.skip = () => { if (it.t > 0.3) close(); };
+    it.update = () => {
+      if (it.phase === 'in' && it.t > hold) close();
+      if (it.phase === 'out' && it.t - it.closeT > 0.4) { it.dead = true; res(onLand ? onLand() : undefined); }
+    };
+    it.draw = ctx => {
+      const out = it.phase === 'out', q = out ? G.clamp((it.t - it.closeT) / 0.4, 0, 1) : 0, e = G.ease.inCubic(q);
+      const r = G.L.reel, m = Math.min(G.W, G.H), c0 = { x: r.x + r.w / 2, y: r.y + r.h * 0.46 }, sp = (G.HUD && G.HUD.spinC) || c0;
+      const cx = G.lerp(c0.x, sp.x, e), cy = G.lerp(c0.y, sp.y, e), k = G.lerp(1, 0.1, e) * G.ease.outBack(G.clamp(it.t / 0.35, 0, 1));
+      const pw = Math.min(r.w * 0.86, m * 0.75), ph = m * 0.3;
+      ctx.save(); ctx.globalAlpha = out ? 1 - q * 0.5 : fadeIn(it.t, 0.2);
+      if (!out) { ctx.fillStyle = 'rgba(8,2,20,.55)'; G.roundRect(ctx, r.x, r.y, r.w, r.h, G.L.fp); ctx.fill(); drawRays(ctx, c0.x, c0.y, m * 1.1, 0.35); }
+      ctx.translate(cx, cy); ctx.scale(k, k);
+      drawPlate(ctx, S.superFS ? 'super' : 'fs', 0, 0, pw, ph, 1);
+      G.text(ctx, G.T('fsRetrigger'), 0, -ph * 0.28, Math.max(11, m * 0.032), '#F4F1EA', { weight: 800, display: true, shadow: 'rgba(0,0,0,.8)', maxW: pw * 0.7 });
+      G.goldText(ctx, '+' + n, 0, ph * 0.02, m * 0.14, { glow: 'rgba(255,140,30,.9)', tabular: true });
+      G.goldText(ctx, G.T('fsAwarded'), 0, ph * 0.3, m * 0.05, { maxW: pw * 0.8 });
+      ctx.restore();
+    };
+    O.items.push(it);
+  });
+
+  // ---------------- Super Free Spins: the starting multiplier is charged into the collector ----------------
+  // it forms over the board, then flies into the multiplier well (to); the promise resolves as it lands
+  O.charge = (value, to) => new Promise(res => {
+    const rm = G.settings.reducedMotion, grow = 0.45, hold = 0.45, fly = rm ? 0.25 : 0.5;
+    const it = { kind: 'charge', block: true, t: 0 };
+    it.skip = () => { if (it.t < grow + hold) it.t = grow + hold; };
+    it.update = () => { if (it.t >= grow + hold + fly) { it.dead = true; res(); } };
+    it.draw = ctx => {
+      const r = G.L.reel, cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      let x = cx, y = cy, s = 1, a = 1;
+      if (it.t < grow) { s = rm ? 1 : 0.2 + 1 * G.ease.outBack(it.t / grow); a = fadeIn(it.t, 0.15); }
+      else if (it.t < grow + hold) s = rm ? 1 : 1.2 - 0.2 * G.ease.outCubic((it.t - grow) / hold);
+      else {
+        const p = G.ease.inCubic(G.clamp((it.t - grow - hold) / fly, 0, 1));
+        x = G.lerp(cx, to.x, p); y = G.lerp(cy, to.y, p) - (rm ? 0 : Math.sin(p * Math.PI) * r.h * 0.12); s = G.lerp(1, 0.28, p);
+      }
+      ctx.save(); ctx.globalAlpha = a;
+      if (it.t < grow + hold) { ctx.fillStyle = 'rgba(8,2,20,.45)'; G.roundRect(ctx, r.x, r.y, r.w, r.h, G.L.fp); ctx.fill(); drawRays(ctx, cx, cy, r.h * 1.5, 0.5 * a); }
+      ctx.translate(x, y); ctx.scale(s, s);
+      G.goldText(ctx, '×' + value, 0, 0, r.h * 0.3, { maxW: r.w * 0.9, glow: 'rgba(255,90,20,.95)', colors: ['#ffffff', '#ffeaa0', '#ffb03a', '#e0560e', '#ffd36b'] });
+      if (it.t < grow + hold) G.text(ctx, G.T('totalMulti'), 0, r.h * 0.2, Math.max(11, r.h * 0.05), '#ffe2c4', { weight: 800, shadow: 'rgba(0,0,0,.9)' });
       ctx.restore();
     };
     O.items.push(it);

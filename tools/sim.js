@@ -3,7 +3,8 @@
  *
  * Plays the exact engine the browser uses (js/engine.js) headlessly.
  *
- *   node tools/sim.js                 # decomposed RTP for base / ante / buy
+ *   node tools/sim.js                 # decomposed RTP for base / ante / buy / super buy
+ *   node tools/sim.js --super-features 4e5   # pin down the Super Free Spins feature
  *   node tools/sim.js --spins 4e6 --features 3e5 --workers 8
  *   node tools/sim.js --rounds 2e6    # also run full rounds (hit rate, spread)
  *
@@ -15,6 +16,7 @@
  *   B  mean base-spin return (no feature)     — low variance, cheap to pin down
  *   p  natural free-spins trigger rate          — a simple proportion
  *   F  mean value of one 15-spin feature        — measured from many features
+ *   Fs the same for a Super Free Spins feature (starts at 100x, its own orb chance)
  *
  * The 5,000x cap is applied per feature here, which is what playRound does in
  * practice (a base spin worth enough to collide with it is vanishingly rare).
@@ -50,11 +52,11 @@ function work({ job, n, seed, config }) {
     for (let i = 0; i < n; i++) { const x = Math.min(E.playSpin(rng, 'base', { buy: true }).ev.winX, E.MAX_WIN_X); sum += x; sq += x * x; }
     return { n, sum, sq };
   }
-  if (job === 'feature') {
+  if (job === 'feature' || job === 'superFeature') {
     let sum = 0, sq = 0, spins = 0, retr = 0, capped = 0, zero = 0;
     const buckets = [0, 0, 0, 0, 0, 0];               // <20, <50, <100, <250, <1000, >=1000
     for (let i = 0; i < n; i++) {
-      const f = E.playFeature(rng);
+      const f = E.playFeature(rng, null, null, job === 'superFeature');
       const x = f.totalX;
       sum += x; sq += x * x; spins += f.played; retr += f.retriggers;
       if (x >= E.MAX_WIN_X) capped++;
@@ -103,22 +105,26 @@ async function measure(o) {
   const spins = +o.spins || 2e6, features = +o.features || 1.5e5, seed = +o.seed || 20261011;
   const config = o.config ? JSON.parse(o.config) : null;
   if (config) E.configure(config);
-  const [base, ante, buyspin, feat] = await Promise.all([
+  const superFeatures = +o['super-features'] || Math.round(features / 2);
+  const [base, ante, buyspin, feat, sfeat] = await Promise.all([
     run('base', spins, workers, seed, config),
     run('ante', spins, workers, seed + 1, config),
     run('buyspin', Math.min(spins, 5e5), workers, seed + 2, config),
     run('feature', features, workers, seed + 3, config),
+    run('superFeature', superFeatures, workers, seed + 4, config),
   ]);
   const F = mean(feat), Fse = se(feat);
   const pB = base.trig / base.n, pA = ante.trig / ante.n;
   const rtpBase = mean(base) + pB * F;
   const rtpAnte = (mean(ante) + pA * F) / E.ANTE_COST;
   const rtpBuy = (mean(buyspin) + F) / E.BUY_COST_X;
+  const Fs = mean(sfeat), Fsse = se(sfeat), rtpSuper = (mean(buyspin) + Fs) / E.SUPER_COST_X;
   // rough standard errors (independent parts)
   const seBase = Math.sqrt(se(base) ** 2 + (pB * Fse) ** 2 + (F * Math.sqrt(pB * (1 - pB) / base.n)) ** 2);
   const seAnte = Math.sqrt(se(ante) ** 2 + (pA * Fse) ** 2 + (F * Math.sqrt(pA * (1 - pA) / ante.n)) ** 2) / E.ANTE_COST;
   const seBuy = Math.sqrt(se(buyspin) ** 2 + Fse ** 2) / E.BUY_COST_X;
-  return { base, ante, buyspin, feat, F, Fse, pB, pA, rtpBase, rtpAnte, rtpBuy, seBase, seAnte, seBuy };
+  const seSuper = Math.sqrt(se(buyspin) ** 2 + Fsse ** 2) / E.SUPER_COST_X;
+  return { base, ante, buyspin, feat, sfeat, F, Fse, Fs, Fsse, pB, pA, rtpBase, rtpAnte, rtpBuy, rtpSuper, seBase, seAnte, seBuy, seSuper };
 }
 
 async function main() {
@@ -126,7 +132,7 @@ async function main() {
   const t0 = Date.now();
   const m = await measure(o);
   const f = m.feat;
-  if (o.json) { console.log(JSON.stringify({ rtpBase: m.rtpBase, rtpAnte: m.rtpAnte, rtpBuy: m.rtpBuy, F: m.F, pB: m.pB, pA: m.pA, B: mean(m.base), BA: mean(m.ante), Bbuy: mean(m.buyspin), seBase: m.seBase, seAnte: m.seAnte, seBuy: m.seBuy })); return; }
+  if (o.json) { console.log(JSON.stringify({ rtpBase: m.rtpBase, rtpAnte: m.rtpAnte, rtpBuy: m.rtpBuy, rtpSuper: m.rtpSuper, F: m.F, Fs: m.Fs, pB: m.pB, pA: m.pA, B: mean(m.base), BA: mean(m.ante), Bbuy: mean(m.buyspin), seBase: m.seBase, seAnte: m.seAnte, seBuy: m.seBuy, seSuper: m.seSuper, superCapped: m.sfeat.capped / m.sfeat.n })); return; }
   console.log(`Thunder Hunter Sebastian — engine simulation (${m.base.n.toLocaleString()} base spins, ${f.n.toLocaleString()} features)\n`);
   console.log('Components');
   console.log(`  base-spin return   B      ${mean(m.base).toFixed(4)}x   (ante board ${mean(m.ante).toFixed(4)}x)`);
@@ -138,6 +144,8 @@ async function main() {
   console.log(`  Base game          ${pct(m.rtpBase)} ± ${pct(m.seBase)}   (feature share ${pct(m.pB * m.F / m.rtpBase, 1)})`);
   console.log(`  Ante (1.25x stake) ${pct(m.rtpAnte)} ± ${pct(m.seAnte)}`);
   console.log(`  Buy (100x stake)   ${pct(m.rtpBuy)} ± ${pct(m.seBuy)}`);
+  const sf = m.sfeat;
+  console.log(`  Super (500x stake) ${pct(m.rtpSuper)} ± ${pct(m.seSuper)}   (feature ${m.Fs.toFixed(1)}x ± ${m.Fsse.toFixed(1)}, max-win ${pct(sf.capped / sf.n, 3)}, avg ${(sf.spins / sf.n).toFixed(1)} spins)`);
   if (o.rounds) {
     const workers = +o.workers || Math.max(1, os.cpus().length);
     const r = await run('round', +o.rounds, workers, 4242, o.config ? JSON.parse(o.config) : null);

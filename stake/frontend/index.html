@@ -107,16 +107,27 @@
     </div>
   </div>
 
-  <!-- Buy confirmation -->
+  <!-- Buy menu: Free Spins and Super Free Spins, each with its price and its own confirm -->
   <div id="m-buy" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-buy">
-    <div class="card narrow center" tabindex="-1">
+    <div class="card buy-card center" tabindex="-1">
       <h2 id="t-buy" data-t="buyTitle">Buy free spins</h2>
-      <p data-th="buyLead">Buy <b>15 free spins</b> for</p>
-      <div class="big-price" id="buyPrice"></div>
-      <div class="btn-row">
-        <button class="ghost" data-close>Cancel</button>
-        <button id="buyConfirm" class="primary" data-t="buyConfirm">Buy</button>
+      <div class="buy-tiers">
+        <section class="buy-tier" id="buyTierBonus" aria-labelledby="t-buy-bonus">
+          <h3 id="t-buy-bonus" data-t="buyFsName">Free spins</h3>
+          <p id="buyLeadBonus"><b>15 free spins</b></p>
+          <div class="big-price" id="buyPrice"></div>
+          <p class="note buy-why" id="buyWhyBonus"></p>
+          <button id="buyConfirm" class="primary" data-t="buyConfirm">Buy</button>
+        </section>
+        <section class="buy-tier super" id="buyTierSuper" aria-labelledby="t-buy-super">
+          <h3 id="t-buy-super" data-t="buySuperName">Super free spins</h3>
+          <p id="buyLeadSuper"><b>15 free spins</b> starting at <b>×100</b> total multi</p>
+          <div class="big-price" id="buyPriceSuper"></div>
+          <p class="note buy-why" id="buyWhySuper"></p>
+          <button id="buyConfirmSuper" class="primary" data-t="buyConfirm">Buy</button>
+        </section>
       </div>
+      <button class="ghost" data-close>Cancel</button>
     </div>
   </div>
 

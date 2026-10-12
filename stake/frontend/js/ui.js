@@ -50,7 +50,7 @@
     if (name === 'fair') renderFair();
     if (name === 'menu') renderSession();
     if (name === 'stats') G.Stats.renderPanel();
-    if (name === 'buy') $('buyPrice').textContent = G.money(G.buyCost());
+    if (name === 'buy') renderBuy();
     if (name === 'credit') $('creditText').innerHTML = T(G.allow('resetBalance') ? 'lowDemo' : 'lowLive', { v: G.money(S.credit) });
     UI.sync();
     const card = $('m-' + name).querySelector('.card');
@@ -107,7 +107,7 @@
   UI.showReplay = (data, win) => {
     const R = G.RGS, mode = R.replay.mode, bet = G.baseBet();
     const cost = data && data.costMultiplier ? data.costMultiplier : (window.GOS_MATH && GOS_MATH.modes[mode] ? GOS_MATH.modes[mode].cost : 1);
-    const name = { base: T('modeBase'), ante: T('modeAnte'), bonus: T('modeBonus') }[mode] || mode;
+    const name = { base: T('modeBase'), ante: T('modeAnte'), bonus: T('modeBonus'), super: T('modeSuper') }[mode] || mode;
     const rows = [[T('replayMode'), name], [T('replayBet'), G.money(bet)]];
     if (Math.abs(cost - 1) > 1e-9) rows.push([T('replayCost'), G.xfmt(cost) + ' · ' + G.money(bet * cost)]);
     if (win != null) rows.push([T('replayTotal'), G.money(win)]);
@@ -180,8 +180,9 @@
     $('resetCredit').addEventListener('click', () => { G.Game.resetCredit(); UI.closeAll(); });
     $('creditReset').addEventListener('click', () => { G.Game.resetCredit(); UI.closeAll(); });
 
-    // buy
-    $('buyConfirm').addEventListener('click', () => { UI.closeAll(); G.Game.buy(); });
+    // buy: each tier confirms itself
+    $('buyConfirm').addEventListener('click', () => { UI.closeAll(); G.Game.buy('bonus'); });
+    $('buyConfirmSuper').addEventListener('click', () => { UI.closeAll(); G.Game.buy('super'); });
 
     // fairness
     $('setClientSeed').addEventListener('click', () => {
@@ -232,6 +233,17 @@
     $('autoCount').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.n === String(c.n))));
     $('autoLoss').value = String(c.loss); $('autoWin').value = String(c.win); $('autoFeature').checked = !!c.feature;
   }
+  // the buy menu: both tiers with their price; one the balance can't cover is unlit and says so
+  function renderBuy() {
+    $('buyPrice').textContent = G.money(G.buyCost());
+    $('buyPriceSuper').textContent = G.money(G.superCost());
+    $('buyLeadBonus').innerHTML = T('buyFsLead', { n: E.FS_AWARD });
+    $('buyLeadSuper').innerHTML = T('buySuperLead', { n: E.FS_AWARD, x: E.SUPER_START });
+    for (const [kind, tier, btn, why] of [['bonus', 'buyTierBonus', 'buyConfirm', 'buyWhyBonus'], ['super', 'buyTierSuper', 'buyConfirmSuper', 'buyWhySuper']]) {
+      const ok = G.Game.canAfford(kind);
+      $(tier).classList.toggle('off', !ok); $(btn).disabled = !ok; $(why).textContent = ok ? '' : T('lowTitle');
+    }
+  }
   function renderBets() {
     // each level as BET will show it: with Double Chance on, what a spin at that level costs
     const k = S.ante ? E.ANTE_COST : 1;
@@ -254,7 +266,8 @@
     const M = window.GOS_MATH || { modes: {} }, md = M.modes;
     const bet = w('bet', 'play amount');
     const rtp = m => (md[m] ? md[m].rtp.toFixed(2) : '96.50') + '%';
-    const cost = m => (md[m] ? md[m].cost : { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X }[m]);
+    const cost = m => (md[m] ? md[m].cost : { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X, super: E.SUPER_COST_X }[m]);
+    const fsN = E.FS_AWARD, superName = w('Buy super free spins', 'Get super free spins');
     const maxX = m => ((md[m] && md[m].maxWinX) || E.MAX_WIN_X).toLocaleString('en-US');
     const costs = w('Costs', 'Uses');
     const ctl = [
@@ -262,7 +275,7 @@
       G.allow('bet') && ['− / + (↓ / ↑)', `Lower or raise the ${bet}; hold to keep stepping.`],
       G.allow('bet') && [w('BET', 'PLAY') + ' (in the bar)', `Tap it to pick from every ${bet} level.`],
       G.allow('ante') && [w('Double chance', 'Double chance'), `Adds 25% to the ${bet} on every spin (${w('BET', 'PLAY')} shows the total) and free spins trigger more often. Wins are still multiples of the ${bet} before the 25%.`],
-      G.allow('buy') && [w('Buy free spins', 'Get free spins') + ' (B)', `Starts 15 free spins straight away for ${cost('bonus')}× the ${bet}. Double chance must be off.`],
+      G.allow('buy') && [w('Buy free spins', 'Get free spins') + ' (B)', `Opens a menu of two: <b>free spins</b>, ${fsN} free spins straight away for ${cost('bonus')}× the ${bet}, or <b>super free spins</b>, ${fsN} free spins that start with a ×${E.SUPER_START} total multiplier, for ${cost('super')}× the ${bet}. Each has its own confirm button. Double chance must be off.`],
       G.allow('auto') && ['Autoplay (A)', `Plays 10, 25, 50, 100 or unlimited rounds in a row, with optional stops: when the balance drops by a set amount, on a big single win, or when free spins start. Press it again, or press Spin, to stop. It also stops when the balance is too low.`],
       G.allow('turbo') && ['Turbo (T)', 'Faster animations. The outcome is the same.'],
       ['Info (I)', 'These rules.'],
@@ -279,6 +292,7 @@
       ['base', 'Base game', `${costs} 1× the ${bet}.`],
       G.allow('ante') && ['ante', 'Double chance', `${costs} ${cost('ante')}× the ${bet}; free spins trigger more often.`],
       G.allow('buy') && ['bonus', w('Buy free spins', 'Get free spins'), `${costs} ${cost('bonus')}× the ${bet}; starts the free spins straight away.`],
+      G.allow('buy') && ['super', superName, `${costs} ${cost('super')}× the ${bet}; starts the free spins straight away, with a ×${E.SUPER_START} total multiplier from the first free spin.`],
     ].filter(Boolean);
     const tab = (k, label, on) => `<button type="button" class="tab" role="tab" data-tab="${k}" aria-selected="${on}" tabindex="${on ? 0 : -1}">${label}</button>`;
     $('rulesCard').innerHTML = `${X}
@@ -291,7 +305,8 @@
       <div id="orbList" class="orb-list"></div>
       <p>Orbs fly into the <b>multiplier</b> collector. When the tumbling stops, its total multiplies the spin's win.</p>
       <p class="with-icon"><canvas id="scatterIcon" width="64" height="64" aria-hidden="true"></canvas>
-        <span><b>Free spins.</b> Scatters are counted once all tumbles have finished and don't win on their own. <b>4+ scatters</b> award <b>15 free spins</b>. In the feature, every orb is <b>saved</b> into a total multiplier that applies to every winning spin until the feature ends. <b>3+ scatters</b> in the feature add <b>+5 spins</b>.</span></p>
+        <span><b>Free spins.</b> Scatters are counted once all tumbles have finished and don't win on their own. <b>4+ scatters</b> award <b>${fsN} free spins</b>. In the feature, every orb is <b>saved</b> into a total multiplier that applies to every winning spin until the feature ends. <b>3+ scatters</b> in the feature add <b>+${E.FS_RETRIGGER} spins</b>.</span></p>
+      ${G.allow('buy') ? `<p><b>Super free spins.</b> The same ${fsN} free spins, but the total multiplier starts at <b>×${E.SUPER_START}</b> and every orb adds to it. Orbs land a little less often than in regular free spins.</p>` : ''}
       <p><b>Max win.</b> A round can win at most <b>${E.MAX_WIN_X.toLocaleString('en-US')}×</b> the ${bet}. Reaching it ends the round straight away, including any free spins left.</p>
       </section>
       <section role="tabpanel" data-tab="modes" hidden>

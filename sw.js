@@ -5,17 +5,17 @@
  * Scope is this folder, so it also works when the game is served from a
  * sub-path (e.g. fiskce.com/gatesofsebastianv9/). Cache Storage is shared by
  * the whole origin, and every version of the game may be served from it side by side
- * (fiskce.com/prod/game/api/thunderhuntersebastian/v1/ ... /v10/), so this worker only ever
- * clears older releases of its own version ('gos10-core-<n>/-media-<n>'), never another version's.
+ * (fiskce.com/prod/game/api/thunderhuntersebastian/v1/ ... /v11/), so this worker only ever
+ * clears older releases of its own version ('gos11-core-<n>/-media-<n>'), never another version's.
  *  - code (html/js/css/json): network first, cache as fallback -> online
  *    players always get the latest build
  *  - art, fonts, sounds: cache first (the .m4a sound sheets Safari uses are
  *    cached on first use; offline without them, the recipes render the same sounds)
  * Bump VERSION on every release.
  */
-const VERSION = 'gos10-core-6';
+const VERSION = 'gos11-core-1';
 const MEDIA = VERSION.replace('-core-', '-media-');      // media turns over with each release too, so a sheet never outlives its sfx.json
-const OWN = new RegExp('^' + VERSION.split('-')[0] + '-(core|media)');      // this version's caches: gos10-core-*, gos10-media*
+const OWN = new RegExp('^' + VERSION.split('-')[0] + '-(core|media)');      // this version's caches: gos11-core-*, gos11-media*
 const CORE = [
   './',
   'manifest.json',

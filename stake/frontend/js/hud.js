@@ -230,16 +230,24 @@
     const L = G.L, P = L.portrait, rad = Math.min(12, L.buy.h * 0.16);
     if (!G.allow('buy')) { drawBetPanel(ctx, L, P, rad); drawWell(ctx); return; }
     // BUY FREE SPINS: pressable whenever no round is running; it says why when it can't
+    // BUY opens the menu of both buys (Free Spins 100x, Super Free Spins 500x)
     const br = L.buy, buyIdle = !S.busy && !S.inFS, buyOk = buyIdle && !S.ante && G.Game.canAfford('bonus');
     const a = G.button('buy', br.x, br.y, br.w, br.h, () => G.Game.askBuy(), { disabled: !buyIdle || S.ante, label: T('buyTitle'),
       reason: S.inFS ? 'reasonFS' : S.busy ? 'reasonRound' : 'msgAnteFirst' });
     ctx.save(); sink(ctx, br, a);
     plateButton(ctx, br, rad, 'ruby', a, !buyOk);
     const fs = P ? Math.min(br.h * 0.22, br.w * 0.1) : Math.min(br.h * 0.16, br.w * 0.12);
+    // a tall plate also shows the Super Free Spins price under the regular one (both are in the buy menu)
+    const both = !P && br.h >= 96, cx = br.x + br.w / 2;
     ctx.globalAlpha = buyOk ? 1 : 0.6;
-    G.text(ctx, T('buy'), br.x + br.w / 2, br.y + br.h * 0.24, floor(fs * 0.9), '#ffe6dc', { weight: 800, maxW: br.w * 0.9 });
-    G.goldText(ctx, T('freeSpins'), br.x + br.w / 2, br.y + br.h * (P ? 0.5 : 0.48), fs * 1.15, { maxW: br.w * 0.88 });
-    G.text(ctx, G.money(G.buyCost()), br.x + br.w / 2, br.y + br.h * (P ? 0.78 : 0.76), fs * 1.15, TXT, { weight: 800, maxW: br.w * 0.9, tabular: true });
+    G.text(ctx, T('buy'), cx, br.y + br.h * (both ? 0.18 : 0.24), floor(fs * 0.9), '#ffe6dc', { weight: 800, maxW: br.w * 0.9 });
+    G.goldText(ctx, T('freeSpins'), cx, br.y + br.h * (both ? 0.4 : P ? 0.5 : 0.48), fs * 1.15, { maxW: br.w * 0.88 });
+    G.text(ctx, G.money(G.buyCost()), cx, br.y + br.h * (both ? 0.62 : P ? 0.78 : 0.76), fs * (both ? 1.05 : 1.15), TXT, { weight: 800, maxW: br.w * 0.9, tabular: true });
+    if (both) {
+      const superOk = buyOk && G.Game.canAfford('super');
+      ctx.globalAlpha = superOk ? 1 : 0.6;
+      G.text(ctx, T('superShort') + ' ' + G.money(G.superCost()), cx, br.y + br.h * 0.84, floor(fs * 0.8), '#ffb46b', { weight: 800, maxW: br.w * 0.9, tabular: true });
+    }
     ctx.restore();
     drawBetPanel(ctx, L, P, rad);
     drawWell(ctx);
@@ -436,6 +444,8 @@
     const base = S.winBase || 0, c = G.Overlay.counting();
     // a big win re-counts from zero on its own plate; the readout keeps what the board has already shown
     if (c && c.big) return G.countMoney(base + Math.min(c.to, Math.max(c.shown, S.tumbleShown || 0)), base + c.to);
+    // the max win counts the whole round: WIN keeps what it already shows and stops at the cap
+    if (c && c.round) return G.countMoney(Math.min(c.to, Math.max(c.shown, base + (S.tumbleShown || 0))), c.to);
     if (S.busy && S.tumbleShown > 0) return G.countMoney(base + S.tumbleShown, base + countTo());
     if (S.inFS && S.roundWin > 0) return G.money(S.roundWin);
     return S.winDisplay > 0 ? G.money(S.winDisplay) : G.money(0);
@@ -560,7 +570,9 @@
         }
       }
       G.text(ctx, S.inFS ? T('free') : T('auto'), cx, cy - rr * 0.3, floor(rr * 0.22), '#ffe9b0', { weight: 800 });
-      G.goldText(ctx, n === Infinity ? '∞' : String(n), cx, cy + rr * 0.1, rr * 0.5, { display: false, weight: 800, tabular: true });
+      // a retrigger counts its spins in one by one, each with a swell
+      const swell = S.inFS ? 1 + 0.25 * Math.max(0, 1 - (G.clock.real - (S.fsCountT || -9)) / 0.22) : 1;
+      G.goldText(ctx, n === Infinity ? '∞' : String(n), cx, cy + rr * 0.1, rr * 0.5 * swell, { display: false, weight: 800, tabular: true });
       if (!S.inFS) G.text(ctx, T('stop'), cx, cy + rr * 0.5, floor(rr * 0.19), TXT, { weight: 800 });
     } else {
       // the arrows: cocked by a press, running with the reels, settling with a little overshoot
@@ -759,7 +771,7 @@
       out.push([T('sessNet'), (net > 0 ? '+' : net < 0 ? '−' : '') + G.money(Math.abs(net))]);
     }
     if (G.allow('rtp')) {
-      const m = (window.GOS_MATH && GOS_MATH.modes) || {}, mode = S.ante ? 'ante' : 'base';
+      const m = (window.GOS_MATH && GOS_MATH.modes) || {}, mode = S.inFS && S.superFS ? 'super' : S.ante ? 'ante' : 'base';
       out.push([T('sessRtp'), (m[mode] ? m[mode].rtp : 96.5).toFixed(2) + '%']);
     }
     if (G.allow('timer')) {
