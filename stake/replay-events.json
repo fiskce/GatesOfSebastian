@@ -1,0 +1,113 @@
+{
+  "base": {
+    "loss": {
+      "event": 1,
+      "payoutMultiplier": 0,
+      "criteria": "0",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=base&event=1&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=base&event=1&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "normalWin": {
+      "event": 30001,
+      "payoutMultiplier": 4.8,
+      "criteria": "basegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=base&event=30001&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=base&event=30001&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "bigWin": {
+      "event": 30113,
+      "payoutMultiplier": 23,
+      "criteria": "basegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=base&event=30113&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=base&event=30113&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "bonusTrigger": {
+      "event": 120001,
+      "payoutMultiplier": 7.4,
+      "criteria": "freegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=base&event=120001&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=base&event=120001&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "winCap": {
+      "event": 142501,
+      "payoutMultiplier": 5000,
+      "criteria": "wincap",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=base&event=142501&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=base&event=142501&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    }
+  },
+  "ante": {
+    "loss": {
+      "event": 1,
+      "payoutMultiplier": 0,
+      "criteria": "0",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=ante&event=1&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=ante&event=1&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "normalWin": {
+      "event": 30003,
+      "payoutMultiplier": 6,
+      "criteria": "basegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=ante&event=30003&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=ante&event=30003&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "bigWin": {
+      "event": 30103,
+      "payoutMultiplier": 18.6,
+      "criteria": "basegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=ante&event=30103&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=ante&event=30103&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "bonusTrigger": {
+      "event": 120001,
+      "payoutMultiplier": 39.1,
+      "criteria": "freegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=ante&event=120001&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=ante&event=120001&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "winCap": {
+      "event": 142501,
+      "payoutMultiplier": 5000,
+      "criteria": "wincap",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=ante&event=142501&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=ante&event=142501&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    }
+  },
+  "bonus": {
+    "loss": {
+      "event": 262,
+      "payoutMultiplier": 0,
+      "criteria": "freegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=bonus&event=262&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=bonus&event=262&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "normalWin": {
+      "event": 1,
+      "payoutMultiplier": 145.8,
+      "criteria": "freegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=bonus&event=1&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=bonus&event=1&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "bigWin": {
+      "event": 384,
+      "payoutMultiplier": 1960.1,
+      "criteria": "freegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=bonus&event=384&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=bonus&event=384&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "bonusTrigger": {
+      "event": 1,
+      "payoutMultiplier": 145.8,
+      "criteria": "freegame",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=bonus&event=1&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=bonus&event=1&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    },
+    "winCap": {
+      "event": 45001,
+      "payoutMultiplier": 5000,
+      "criteria": "wincap",
+      "mock": "http://localhost:8125/?replay=true&rgs_url=localhost:8125&game=ths&version=1&mode=bonus&event=45001&amount=1000000",
+      "stake": "https://{team}.cdn.stake-engine.com/{game}/{version}/index.html?replay=true&game={game}&version={mathVersion}&mode=bonus&event=45001&amount=1000000&currency=USD&rgs_url={rgs_url}"
+    }
+  }
+}

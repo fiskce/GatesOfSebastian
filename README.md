@@ -100,14 +100,16 @@ A five-lens review of v10 (game flow, Stake fit, audio, rendering, DOM), each fi
 - Books are sampled in buckets (0 / base-game win / free spins / max win) with their natural probabilities. Max-win rounds are found by search, so 5,000× is in every mode. Weights are then scaled so each mode's RTP is exactly **96.50%** (the scaling stays within 3% of natural). The exporter reads every file back from disk and checks ids, weights, payouts and every event against the engine.
 - `js/math-info.js` (generated) carries the RTP and max win the rules show.
 
-| Mode | Books | RTP | Hit rate | Max |
-|---|---|---|---|---|
-| base | 95,010 | 96.5000% | 26.2% | 5,000× |
-| ante | 95,006 | 96.5000% | 26.2% | 5,000× |
-| bonus | 30,020 | 96.5000% | 99.3% | 5,000× |
+| Mode | Books | RTP | Hit rate | Max | Max-win odds | Re-weight |
+|---|---|---|---|---|---|---|
+| base | 142,512 | 96.5000% | 26.1% | 5,000× | 1 in 2.0 million | 0.986 |
+| ante | 142,509 | 96.5000% | 26.0% | 5,000× | 1 in 1.2 million | 0.978 |
+| bonus | 45,024 | 96.5000% | 99.2% | 5,000× | 1 in 7,476 buys | 1.023 |
+
+Stake's own `rgs_verification.py` passes on these files (see [STAKE.md](STAKE.md)).
 
 ```bash
-node tools/export-math.js                 # ~5 minutes on 4 cores, writes math/ and js/math-info.js
+node tools/export-math.js --scale 1.5     # the published math: ~8 minutes on 4 cores, writes math/ and js/math-info.js
 node tools/export-math.js --scale 4       # 4x the books per bucket
 ```
 
@@ -193,6 +195,8 @@ From 16 million base spins and 800,000 features (`node tools/sim.js --spins 1.6e
 | Feature spread | 35% under 20× · 16% 100–250× · 0.9% over 1,000× |
 | Volatility (σ per round) | 17.5× bet |
 | Max win | 5,000× (1 in ~7,000 features) |
+
+v10.2 moved Topaz to 0.3×/0.8× and retuned the orb chances to match. A check run of the simulator on the final settings gave base **96.41% ± 0.38**, Double Chance **96.21% ± 0.36** and Buy Free Spins **96.51% ± 0.34** (average feature 96.3×; free spins 1 in 273, 1 in 157 with ante). The published books then fix every mode at exactly 96.50%.
 
 The browser and the simulator call the same `Engine.evaluate()`, so the payout on screen is exactly what was measured.
 

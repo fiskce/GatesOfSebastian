@@ -81,7 +81,7 @@ function replayEvents(mathDir) {
     const crit = id => JSON.parse(books[id - 1]).criteria;
     const x = pm => pm / 100, cost = m.cost, bonus = m.name === 'bonus';
     const find = pred => { for (const [id, , pm] of rows) if (pred(id, pm)) return id; return null; };
-    const minPm = Math.min(...rows.map(r => r[2]));
+    const minPm = rows.reduce((m, r) => Math.min(m, r[2]), Infinity);
     const cases = {
       loss: find((id, pm) => pm === minPm),
       normalWin: bonus ? find((id, pm) => x(pm) >= 0.5 * cost && x(pm) <= 1.5 * cost) : find((id, pm) => x(pm) >= cost && x(pm) <= 5 * cost && crit(id) === 'basegame'),

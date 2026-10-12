@@ -487,9 +487,10 @@ const AudioEngine = (() => {
     if (!musicOn) return;
     const dba = opts && opts.downbeatAt;
     if (m === 'fs' && dba) {
-      const lead = TRACKS.fs.loopStart, sh = shift.musicFeature || 0, at = dba - lead - sh;
+      // times here are in the music's own seconds; startTrack and position() allow for an AAC decode's priming
+      const lead = TRACKS.fs.loopStart, at = dba - lead;
       if (at >= ctx.currentTime) { stopTrack(Math.max(0.3, at - ctx.currentTime)); if (startTrack('fs', 0.05, at)) stopSynthMusic(); return; }
-      resumeAt.fs = Math.min(lead, ctx.currentTime - at - sh);  // too late for the intro: join it in step
+      resumeAt.fs = Math.min(lead, ctx.currentTime - at);       // too late for the intro: join it in step
       playMode(0.3, 0.05); return;
     }
     playMode(1.2, m === 'fs' ? 0.3 : 1.5);

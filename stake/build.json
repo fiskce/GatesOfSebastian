@@ -1,0 +1,273 @@
+{
+  "game": "Thunder Hunter Sebastian",
+  "version": "10.2",
+  "mathHash": "684d406e5d36",
+  "frontend": {
+    "assets/fonts/cinzel-latin-700-normal.woff2": {
+      "bytes": 15184,
+      "sha256": "8efa224fe70fef188a39c095e218b81fd31061809f2752537e33a9ec7b9c2263"
+    },
+    "assets/fonts/cinzel-latin-900-normal.woff2": {
+      "bytes": 14804,
+      "sha256": "87128561fd042f0283e7b852af5d074154779eff37b9ad8600b331ad0ce4a6b7"
+    },
+    "assets/fonts/OFL.txt": {
+      "bytes": 4578,
+      "sha256": "205fd13975752f07096b18ff132b52364f50a84ae023a437cabf3e4d5a839c6f"
+    },
+    "assets/fonts/outfit-latin-500-normal.woff2": {
+      "bytes": 13528,
+      "sha256": "fc9bff941def6d924a71632bd8a93190528872eae6414844f3c367ff948d92fd"
+    },
+    "assets/fonts/outfit-latin-700-normal.woff2": {
+      "bytes": 14060,
+      "sha256": "5d5e3734089a74707292ce8a3e186def34cd63e33879f9ac3689a8d8da9d0706"
+    },
+    "assets/fonts/outfit-latin-800-normal.woff2": {
+      "bytes": 14048,
+      "sha256": "eabf8cb2c01d0345e2eb19a49d04e8f8d0d520b74959b173d5ea6c2dcb95e4cd"
+    },
+    "assets/icons/favicon-16.png": {
+      "bytes": 765,
+      "sha256": "d2213c9b8e8450b5321cba7829bb3b84d271a20df75ac661f7c66888b9ee9a71"
+    },
+    "assets/icons/favicon-32.png": {
+      "bytes": 2084,
+      "sha256": "745ca08e1d64cf18a989e4f61475ee95b890dbb605a43aa5216b0c039aa6e67b"
+    },
+    "assets/sebastian/idle.webp": {
+      "bytes": 479552,
+      "sha256": "90c7cb25c8d9347f2b428c41dce31f397dbe3c58d41e07881e63397b507e8ff5"
+    },
+    "assets/sebastian/shoot.webp": {
+      "bytes": 921026,
+      "sha256": "4f3b669516eb7224677263a96804cb6d554d81d446fb3b86528117654040e1d9"
+    },
+    "assets/sebastian/splash.webp": {
+      "bytes": 534920,
+      "sha256": "5a37f078e1217658801afa5188f0d31a7e292c6cedf78964172b550071960a6b"
+    },
+    "assets/symbols/blue.png": {
+      "bytes": 16443,
+      "sha256": "1a07b1c7bd1e962eed3cb6ab0e2752b27d57abd8d71408f696e958b9ea1da6cb"
+    },
+    "assets/symbols/chalice.png": {
+      "bytes": 11188,
+      "sha256": "50f24912170a59d4b074dbb5ed91ce70ec52aa2bc847ad237b79839f53dc3989"
+    },
+    "assets/symbols/crown.png": {
+      "bytes": 13808,
+      "sha256": "1f06f066d9a62f0a3dc1cd50923cab02c92ee71f35e7151d7ffffefcbef11858"
+    },
+    "assets/symbols/glass.png": {
+      "bytes": 11275,
+      "sha256": "862b4fb2d82fca6b367c7bf1b3829a90fa3a0ca8a2a5f28afcd4e2b0814a44c6"
+    },
+    "assets/symbols/gold.png": {
+      "bytes": 20873,
+      "sha256": "ad43a1f2aaec44e5364812b92cc4e628cb8453c76bcfdb914273cff6eb7627cd"
+    },
+    "assets/symbols/green.png": {
+      "bytes": 13648,
+      "sha256": "0836c546bcce168847ac27b54a41817376174d495e7bae29110c4bc4b8a228b3"
+    },
+    "assets/symbols/purple.png": {
+      "bytes": 15240,
+      "sha256": "001d6212cc5e8730410a390d68fcd3a53ef451574e3a4bb85669fe71f63dfc2f"
+    },
+    "assets/symbols/red.png": {
+      "bytes": 20104,
+      "sha256": "20c2fd2cfd98f2713aa23b6e1bcadefb241f715dc830770935399ecc2ef1ecf8"
+    },
+    "assets/symbols/ring.png": {
+      "bytes": 22461,
+      "sha256": "fe2ab3fb3bb93f06c0ff76c630a70d9b65e178209e682097f91b9d9791591faa"
+    },
+    "assets/symbols/scatter.png": {
+      "bytes": 79749,
+      "sha256": "baa18f20a45d12394fec3df9658ca3675813b7643532a74342e26f393890b8b2"
+    },
+    "css/style.css": {
+      "bytes": 23847,
+      "sha256": "975c79004529818fd389cb531e40be28934c9460b1e39f387accdea0cc073b7e"
+    },
+    "index.html": {
+      "bytes": 13737,
+      "sha256": "f6e24755d922d7d4224c50cc4e0879452ece1edd015c59c1b95857bd719d3c86"
+    },
+    "js/audio.js": {
+      "bytes": 30009,
+      "sha256": "670c23eac1e584e95c8eb95af8b7a0b420f1774482f243e648e1bc56713602bf"
+    },
+    "js/board.js": {
+      "bytes": 48254,
+      "sha256": "7752a84c17f2cd709c1959775e2e44008af64e2b2686806ec007f1233e8c6803"
+    },
+    "js/build.js": {
+      "bytes": 198,
+      "sha256": "35cd7382583e979a76326c2dc53e4a3282ffdf0c8c5b88fc8225c2a8ac7a2e21"
+    },
+    "js/core.js": {
+      "bytes": 24509,
+      "sha256": "d22c50f997eee67d7617d10ba0ae1012d3ddd3d401771e387060ceec0344ecae"
+    },
+    "js/engine.js": {
+      "bytes": 16566,
+      "sha256": "cabb4da9a1f6bacb7a23323be8455f5da671d87e25eb1e7f96c151c2d64ff8e6"
+    },
+    "js/fair.js": {
+      "bytes": 6224,
+      "sha256": "22a24cdf1f00e9fa23c4e2ed3cd9e18377c2552955a80f34d87bc360968fc052"
+    },
+    "js/fx.js": {
+      "bytes": 17575,
+      "sha256": "886b29656a2b72ec0087a4ddf9ff05988eff5470a28515d844199ede7f9d241d"
+    },
+    "js/game.js": {
+      "bytes": 51012,
+      "sha256": "02dbf3d6160519ff2e78b5a4a2fef677a9475e0e9d820a734594d56da4e81266"
+    },
+    "js/hud.js": {
+      "bytes": 53982,
+      "sha256": "44147a94d53ceac1664673954a7f4b3947318533869fdb3e2740f229693b0a6d"
+    },
+    "js/materials.js": {
+      "bytes": 14027,
+      "sha256": "11f34e11100827c58ac6b51c949607e4da7488b6ad92faa78ef4b1f5609ba0aa"
+    },
+    "js/math-info.js": {
+      "bytes": 406,
+      "sha256": "0b6e611d8e1bf0b3b969cb5a7d2722a2da136215e81cad2a276b8a47da2d3e20"
+    },
+    "js/music.js": {
+      "bytes": 5454,
+      "sha256": "da69fcdd9b306de5bdea21c92b7afbfa66f5042cfc37fd01ba1389635ce75cfa"
+    },
+    "js/overlays.js": {
+      "bytes": 22235,
+      "sha256": "6047e0cc3e3ee6d4e11fb9036334c44b57cd4e519436cb13251aac88b9fb4fa7"
+    },
+    "js/rgs.js": {
+      "bytes": 13631,
+      "sha256": "8ae515c7c5b4976ddf150a0ac9d7cb2dd0ae9e7ddc60fff28919c1030aa7804c"
+    },
+    "js/scene.js": {
+      "bytes": 60432,
+      "sha256": "77f50cc5ff2d7d3c2a66b607dc641ff432a3df15e2125dc8004c971ae820de26"
+    },
+    "js/seb-frames.js": {
+      "bytes": 2564,
+      "sha256": "d28a9166c20e3f137b1d4fc440188187ec2daca935fa543dce7d3d900aec3ae1"
+    },
+    "js/sebastian.js": {
+      "bytes": 15006,
+      "sha256": "1470c183b03ab13035e83952f583edd5c7b6159c042c026e5a12495d8c67be66"
+    },
+    "js/sfx-recipes.js": {
+      "bytes": 82666,
+      "sha256": "51883e2bba3430202b2b5b4a39270adc56c8a667983b0d505c8b481f13637c6f"
+    },
+    "js/stats.js": {
+      "bytes": 7487,
+      "sha256": "83ee251ed6ffdc33d9786e48273faabe9824631661856c9dbb3a765a36328de1"
+    },
+    "js/strings.js": {
+      "bytes": 9448,
+      "sha256": "20f8a80a3efb2159713e751ec869ea235321cc2cdc7ac41329123978e1732e64"
+    },
+    "js/symbols.js": {
+      "bytes": 8677,
+      "sha256": "7669da74fbb2eda50e619ced311140e4d48295f5c92078ed815e4170263fffa7"
+    },
+    "js/ui.js": {
+      "bytes": 22907,
+      "sha256": "87bbfa711e138bfae674cd18de89303c2bbda62a74ba81ebb2b444153744e69a"
+    },
+    "LICENSE": {
+      "bytes": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    "sounds/music-base.m4a": {
+      "bytes": 1833182,
+      "sha256": "7bf9dd7d09f3f206e3ab82c8379042b46d5e775d9c40cfe31ea017fae8ee4f89"
+    },
+    "sounds/music-base.ogg": {
+      "bytes": 2166519,
+      "sha256": "44766a749447b91dcca93bf368e763dc8dc6195954f45b749f0c6e8bbc15da3c"
+    },
+    "sounds/music-feature.m4a": {
+      "bytes": 1133993,
+      "sha256": "a76f87240e4fe6bf22a1982262f2a1e168f7bfc1c8b1ec968258357898f6cdfe"
+    },
+    "sounds/music-feature.ogg": {
+      "bytes": 1337722,
+      "sha256": "5bb76cb8f30c2a915cb02f49a9d4dd14655d5e26d2b9ff805f80ed191aecc4f6"
+    },
+    "sounds/sfx-fs.m4a": {
+      "bytes": 416888,
+      "sha256": "ffd4d8b4755506323dbb82ee8d9b153692a8194eaaa32840f562c695930dd609"
+    },
+    "sounds/sfx-fs.ogg": {
+      "bytes": 260539,
+      "sha256": "6d93c6f9bf4a848916431a34692f9c8f1c7c5ca8db66d519934a65cdd7cccfa6"
+    },
+    "sounds/sfx-ui.m4a": {
+      "bytes": 65738,
+      "sha256": "17de46bbb98fc19cee69a8d133f2493606ab5f31a9c40e0d47ec894f7983dc31"
+    },
+    "sounds/sfx-ui.ogg": {
+      "bytes": 22031,
+      "sha256": "7a3d9fe8674f4efd32769a1e7ea3b4613a61f2f7a4e09d94169221350ef83839"
+    },
+    "sounds/sfx-world.m4a": {
+      "bytes": 324679,
+      "sha256": "e27af3601ff1255161d60daa6c8f8ca2a83c4b4da28b3ec6a4ecc6210d24f387"
+    },
+    "sounds/sfx-world.ogg": {
+      "bytes": 166698,
+      "sha256": "45b6640f1f9a2a10d1dcb81d3c70e7728cebf11dc615310878f90e237e001e4c"
+    },
+    "sounds/sfx.json": {
+      "bytes": 30939,
+      "sha256": "ae55163188e86391acbf297d11d48b553edeedbe33536d06c89de3901bcb83a4"
+    },
+    "sounds/thunder.m4a": {
+      "bytes": 16965,
+      "sha256": "52179583e21bdc4d7c92d18c1c6e9aaf861268ec3fcf319ad7d3f6d9836d6bcc"
+    },
+    "sounds/thunder.ogg": {
+      "bytes": 25615,
+      "sha256": "73722d18b98f1787809d375cf4e77abcab9c25f80a073993196382dd19e328a8"
+    }
+  },
+  "math": {
+    "books_ante.jsonl.zst": {
+      "bytes": 13240449,
+      "sha256": "2b07c3d34c815396c05e714d77d716f1b5bc20edfe1df23e0739756a65e91c41"
+    },
+    "books_base.jsonl.zst": {
+      "bytes": 13245210,
+      "sha256": "631792a00286e00ac5c07e5af99b7397f842a07f8a05fad5d67c9d142c59d0c1"
+    },
+    "books_bonus.jsonl.zst": {
+      "bytes": 18279028,
+      "sha256": "ca14cbca4ba44b408e3e8b36a5fa1e52e7a9e9707e156811191499e7c51f9c1d"
+    },
+    "index.json": {
+      "bytes": 430,
+      "sha256": "e3bc676c4825df29cfe490ab4f8e0ba2785ec7960a93b113b6e399ea3a33bf62"
+    },
+    "lookUpTable_ante_0.csv": {
+      "bytes": 2942523,
+      "sha256": "428c1e81d49d23cc189a0cb2df8d5742c5651b6d5ee96f56f15b5e22f750735a"
+    },
+    "lookUpTable_base_0.csv": {
+      "bytes": 2943053,
+      "sha256": "5ea04d18823bf1f1712bd3ce1f604e31126a819652927e80f9eac8f8effd3f8e"
+    },
+    "lookUpTable_bonus_0.csv": {
+      "bytes": 1024414,
+      "sha256": "4f55dce24ca41cce4db5f7dfe03095b74c2061b3c0cd889e62ebb7fc9157f72e"
+    }
+  }
+}

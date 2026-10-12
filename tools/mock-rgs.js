@@ -27,6 +27,7 @@
  *                       defaultBetLevel?, jurisdiction?, force?: {mode: id}, fail?: {path, code, status, after}}
  *        fail.after = true applies the request and then fails the response (a lost answer);
  *        fail.drop = true (with after) applies it and then drops the connection with no answer at all
+ *        (on a fresh connection: API answers close theirs, so the browser can't resend the request)
  *   GET  /mock/log      every API call so far;  POST /mock/reset  forget everything
  */
 'use strict';
@@ -118,8 +119,10 @@ const api = {
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.webp': 'image/webp',
   '.ogg': 'audio/ogg', '.m4a': 'audio/mp4', '.webm': 'video/webm', '.mp4': 'video/mp4', '.woff2': 'font/woff2', '.svg': 'image/svg+xml',
   '.txt': 'text/plain' };
+// API answers (and preflights) close their connection: a browser quietly resends a request whose kept-alive connection
+// drops before any answer, which would turn a dropped answer (fail.drop) into a second, real request
 function send(res, status, obj) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store', 'Connection': 'close' });
   res.end(JSON.stringify(obj));
 }
 function serveFile(req, res, p) {
@@ -141,7 +144,7 @@ function serveFile(req, res, p) {
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x'), p = decodeURIComponent(url.pathname);
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' });
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600', 'Connection': 'close' });
     res.end(); return;
   }
   // replay

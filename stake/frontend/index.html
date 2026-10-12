@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0520" />
+<meta name="description" content="Thunder Hunter Sebastian — a tumbling, pay-anywhere slot drawn on one HTML5 canvas, with stacking thunder multipliers and free spins." />
+<title>Thunder Hunter Sebastian</title>
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+<link rel="preload" href="assets/fonts/cinzel-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/outfit-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/style.css" />
+<script src="js/build.js"></script>
+</head>
+<body>
+
+  <canvas id="game" tabindex="0" data-ta="canvasLabel" aria-label="Thunder Hunter Sebastian slot game. Space to spin, arrow keys change the bet, T toggles turbo, I opens the rules."></canvas>
+  <div id="live" class="sr-only" aria-live="polite"></div>
+
+  <!-- loading -->
+  <div id="loader">
+    <div class="brand">
+      <span class="presents">Fiskce presents</span>
+      <span class="title-sm">THUNDER HUNTER</span>
+      <span class="title">SEBASTIAN</span>
+    </div>
+    <div class="meter"><span id="loadBar"></span></div>
+    <div id="loadPct">0%</div>
+  </div>
+
+  <!-- splash -->
+  <div id="splash">
+    <div class="splash-inner">
+      <img class="splash-seb" src="assets/sebastian/splash.webp" alt="" />
+      <div class="splash-copy">
+        <span class="presents">Fiskce presents</span>
+        <h1><span class="title-sm">THUNDER HUNTER</span><span class="title">SEBASTIAN</span></h1>
+        <div class="features">
+          <div class="feature">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="#ffd36b" stroke-width="3" stroke-linejoin="round"><path d="M24 4l8 8-8 8-8-8z"/><path d="M14 22l6 6-6 6-6-6z"/><path d="M34 22l6 6-6 6-6-6z"/><path d="M24 34l5 5-5 5-5-5z"/></g></svg>
+            <b>Tumble</b><span>8+ of a kind anywhere wins. Winners shatter, new gems fall, wins chain.</span>
+          </div>
+          <div class="feature">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><defs><radialGradient id="og" cx="38%" cy="32%"><stop offset="0" stop-color="#fff4c4"/><stop offset=".5" stop-color="#ff7a2e"/><stop offset="1" stop-color="#a3110a"/></radialGradient></defs><circle cx="24" cy="24" r="17" fill="url(#og)" stroke="#fff" stroke-width="2"/><text x="24" y="29" text-anchor="middle" font-size="13" font-weight="900" fill="#fff" font-family="Cinzel,serif">500x</text></svg>
+            <b>Multipliers to 500×</b><span>Sebastian fires orbs from his shotgun. They add up and multiply the win.</span>
+          </div>
+          <div class="feature">
+            <img src="assets/symbols/scatter.png" alt="" />
+            <b>15 Free Spins</b><span>4+ scatters. Every multiplier is saved and stacks for the whole feature.</span>
+          </div>
+        </div>
+        <button id="playBtn" class="play-btn" data-t="playBtn">PLAY</button>
+        <p class="fine" id="fineText"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info: the rules are built by ui.js (they follow the mode, the wording and the published math) -->
+  <div id="m-info" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-info">
+    <div class="card" tabindex="-1" id="rulesCard"></div>
+  </div>
+
+  <!-- Settings -->
+  <div id="m-settings" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-settings">
+    <div class="card narrow" tabindex="-1">
+      <h2 id="t-settings">Settings</h2>
+      <label class="row"><span>Master volume</span><input type="range" id="volSlider" min="0" max="100" /></label>
+      <label class="row"><span>Music</span><input type="checkbox" id="musicToggle" class="switch" /></label>
+      <label class="row sub"><span>Music volume</span><input type="range" id="musicVolSlider" min="0" max="100" /></label>
+      <label class="row"><span>Sound effects</span><input type="checkbox" id="sfxToggle" class="switch" /></label>
+      <label class="row sub"><span>Effects volume</span><input type="range" id="sfxVolSlider" min="0" max="100" /></label>
+      <label class="row"><span>Turbo spin</span><input type="checkbox" id="turboToggle" class="switch" /></label>
+      <label class="row"><span>Dynamic music <small>(heartbeat and storm that follow the action)</small></span><input type="checkbox" id="dynMusicToggle" class="switch" /></label>
+      <label class="row"><span>Graphics quality</span>
+        <select id="qualitySelect">
+          <option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+        </select></label>
+      <label class="row"><span>Phone tilt effect <small>(the board shifts as you tilt your phone)</small></span><input type="checkbox" id="tiltToggle" class="switch" /></label>
+      <label class="row" id="hapticsRow"><span>Vibration</span><input type="checkbox" id="hapticsToggle" class="switch" /></label>
+      <label class="row"><span>Reduce motion <small>(no shake, zoom or tilt)</small></span><input type="checkbox" id="motionToggle" class="switch" /></label>
+      <button id="resetCredit" class="ghost demo-only">Reset demo balance</button>
+      <button class="primary" data-close>Close</button>
+    </div>
+  </div>
+
+  <!-- Provably fair + history -->
+  <div id="m-fair" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-fair">
+    <div class="card" tabindex="-1">
+      <h2 id="t-fair">Provably fair</h2>
+      <p>Every spin is drawn from <b>HMAC-SHA256(server seed, "client seed:nonce:cursor")</b>. The SHA-256 hash of the server seed is shown <b>before</b> you play, so outcomes can't be changed afterwards. Rotate the seed to reveal it; every spin played on it can then be re-derived right here.</p>
+      <div class="fair-box" id="fairBox"></div>
+      <div class="row inline">
+        <input type="text" id="clientSeedInput" placeholder="your own client seed (optional)" maxlength="64" aria-label="Client seed" />
+        <button id="setClientSeed" class="small">Set</button>
+      </div>
+      <button id="rotateSeed" class="ghost">Rotate seed (reveal current)</button>
+      <div id="revealedSeed" class="note"></div>
+      <h3>Recent spins</h3>
+      <div class="table-wrap">
+        <table class="history">
+          <thead><tr><th>Nonce</th><th>Type</th><th>Bet</th><th>Win</th><th>Check</th></tr></thead>
+          <tbody id="historyList"></tbody>
+        </table>
+      </div>
+      <button class="primary" data-close>Close</button>
+    </div>
+  </div>
+
+  <!-- Buy confirmation -->
+  <div id="m-buy" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-buy">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-buy" data-t="buyTitle">Buy free spins</h2>
+      <p data-th="buyLead">Buy <b>15 free spins</b> for</p>
+      <div class="big-price" id="buyPrice"></div>
+      <div class="btn-row">
+        <button class="ghost" data-close>Cancel</button>
+        <button id="buyConfirm" class="primary" data-t="buyConfirm">Buy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Out of credit -->
+  <div id="m-credit" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-credit">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-credit" data-t="lowTitle">Balance too low</h2>
+      <p id="creditText"></p>
+      <div class="btn-row">
+        <button class="ghost" data-close>Close</button>
+        <button id="creditReset" class="primary demo-only">Reset balance</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats & achievements -->
+  <div id="m-stats" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-stats">
+    <div class="card" tabindex="-1">
+      <h2 id="t-stats">Stats &amp; achievements</h2>
+      <div class="table-wrap stats-wrap"><table class="history stats" id="statsTable"></table></div>
+      <h3>Achievements <span class="faint" id="achCount"></span></h3>
+      <div id="achList" class="ach-list"></div>
+      <button id="resetStats" class="ghost">Reset stats &amp; achievements</button>
+      <button class="primary" data-close>Close</button>
+    </div>
+  </div>
+
+  <!-- Autoplay: how many rounds, and when to stop on its own -->
+  <div id="m-auto" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-auto">
+    <div class="card narrow" tabindex="-1">
+      <h2 id="t-auto" data-t="autoTitle">Autoplay</h2>
+      <p class="lead" data-t="autoRounds">Rounds</p>
+      <div class="seg" id="autoCount" role="group" data-ta="autoRounds" aria-label="Rounds">
+        <button type="button" data-n="10">10</button><button type="button" data-n="25">25</button><button type="button" data-n="50">50</button><button type="button" data-n="100">100</button><button type="button" data-n="Infinity">∞</button>
+      </div>
+      <label class="row"><span data-t="autoLoss">Stop if the balance drops by</span>
+        <select id="autoLoss"><option value="0" data-t="autoNoLimit">No limit</option><option value="10">10×</option><option value="25">25×</option><option value="50">50×</option><option value="100">100×</option></select></label>
+      <label class="row"><span data-t="autoWin">Stop on a single win of</span>
+        <select id="autoWin"><option value="0" data-t="autoNoLimit">No limit</option><option value="10">10×</option><option value="50">50×</option><option value="100">100×</option><option value="500">500×</option></select></label>
+      <label class="row"><span data-t="autoFeature">Stop when free spins start</span><input type="checkbox" id="autoFeature" class="switch" /></label>
+      <p class="note" data-t="autoNote">Limits are multiples of the bet. Autoplay also stops when the balance is too low, and Spin stops it at any time.</p>
+      <div class="btn-row">
+        <button class="ghost" data-close data-t="cancel">Cancel</button>
+        <button id="autoStart" class="primary" data-t="autoStart">Start autoplay</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Every bet level, to pick one directly -->
+  <div id="m-bets" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-bets">
+    <div class="card narrow" tabindex="-1">
+      <h2 id="t-bets" data-t="betsTitle">Choose your bet</h2>
+      <div class="bet-grid" id="betGrid" role="group" data-ta="betsTitle" aria-label="Bet levels"></div>
+      <p class="note" id="betsNote"></p>
+    </div>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="m-menu" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-menu">
+    <div class="card narrow" tabindex="-1">
+      <h2 id="t-menu">Menu</h2>
+      <button class="menu-item" data-open="info" data-t="menuRules">How to play &amp; paytable</button>
+      <button class="menu-item" data-open="settings">Settings</button>
+      <button class="menu-item demo-only" data-open="fair">Provably fair &amp; history</button>
+      <button class="menu-item demo-only" data-open="stats">Stats &amp; achievements</button>
+      <button class="menu-item" id="menuFull">Fullscreen</button>
+      <div id="sessionFacts" class="facts" hidden aria-live="off"></div>
+      <button class="primary" data-close>Close</button>
+    </div>
+  </div>
+
+  <!-- Stake: something went wrong (blocking when the game can't start) -->
+  <div id="m-error" class="modal" hidden role="alertdialog" aria-modal="true" aria-labelledby="t-error" aria-describedby="errorText">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-error"></h2>
+      <p id="errorText"></p>
+      <div class="btn-row">
+        <button id="errorClose" class="ghost" data-t="errClose">Close</button>
+        <button id="errorReload" class="primary" data-t="errReload">Reload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stake: an unfinished round from last time -->
+  <div id="m-resume" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-resume">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-resume" data-t="resumeTitle">Unfinished round</h2>
+      <p id="resumeText"></p>
+      <div class="btn-row"><button id="resumeGo" class="primary" data-t="resumeGo">Continue</button></div>
+    </div>
+  </div>
+
+  <!-- Stake: replaying a past bet -->
+  <div id="m-replay" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="t-replay">
+    <div class="card narrow center" tabindex="-1">
+      <h2 id="t-replay" data-t="replayTitle">Replay</h2>
+      <div class="facts replay-facts" id="replayFacts"></div>
+      <div class="btn-row"><button id="replayGo" class="primary" data-t="replayPlay">Play replay</button></div>
+    </div>
+  </div>
+
+  <script src="js/strings.js"></script>
+  <script src="js/math-info.js"></script>
+  <script src="js/seb-frames.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/fair.js"></script>
+  <script src="js/symbols.js"></script>
+  <script src="js/sfx-recipes.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/music.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/materials.js"></script>
+  <script src="js/rgs.js"></script>
+  <script src="js/fx.js"></script>
+  <script src="js/scene.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/sebastian.js"></script>
+  <script src="js/hud.js"></script>
+  <script src="js/overlays.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

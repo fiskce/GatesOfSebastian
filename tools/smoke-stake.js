@@ -3,6 +3,8 @@
  *
  *   node tools/build-stake.js && node tools/smoke-stake.js            (needs Playwright's Chromium)
  *   node tools/smoke-stake.js --shots <dir>                            also saves screenshots
+ *   node tools/smoke-stake.js --only recovery,social                   just those parts
+ *     (sizes, session, replays, flags, recovery, social)
  *
  * Two mock RGS processes (tools/mock-rgs.js): one only serves stake/frontend (the "CDN"), the other is
  * the RGS on a different origin, playing stake/math. Input is real (trusted) clicks and key presses.
@@ -32,6 +34,7 @@ const SIZES = [[1200, 675], [1024, 576], [800, 450], [400, 225], [425, 812], [37
 const API = new Set(['/wallet/authenticate', '/wallet/play', '/wallet/end-round', '/wallet/balance']);
 const EV = JSON.parse(fs.readFileSync(path.join(PKG, 'replay-events.json'), 'utf8'));
 
+const ONLY = A.only ? String(A.only).split(',') : null, part = name => !ONLY || ONLY.includes(name);
 let fails = 0;
 const check = (name, ok, detail) => { if (!ok) fails++; console.log((ok ? 'PASS ' : 'FAIL ') + name + (detail ? '  — ' + detail : '')); };
 const post = (p, b) => fetch(RGS + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b || {}) }).then(r => r.json());
@@ -91,8 +94,9 @@ function stray(rec) {
 }
 const session = (id, extra) => post('/mock/session', Object.assign({ sessionID: id }, extra || {}));
 const stakeUrl = (id, extra) => `${CDN}/?sessionID=${id}&rgs_url=${RGS_HOST}&lang=en&device=desktop${extra || ''}`;
-const walletCalls = async id => (await (await fetch(RGS + '/mock/log')).json()).filter(l => l.body && l.body.sessionID === id).map(l => l.path);
-const balanceOf = async id => (await post('/wallet/balance', { sessionID: id })).balance.amount;
+// the game's wallet calls for a session (the harness's own balance checks carry harness: true)
+const walletCalls = async id => (await (await fetch(RGS + '/mock/log')).json()).filter(l => l.body && l.body.sessionID === id && !l.body.harness).map(l => l.path);
+const balanceOf = async id => (await post('/wallet/balance', { sessionID: id, harness: true })).balance.amount;
 
 (async () => {
   if (!fs.existsSync(path.join(PKG, 'frontend', 'index.html'))) { console.error('no stake/ package: run node tools/build-stake.js first'); process.exit(2); }
@@ -102,7 +106,7 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id }))
   if (shots) fs.mkdirSync(shots, { recursive: true });
   try {
     // ---- a round at every reference size
-    for (const vp of SIZES) {
+    if (part('sizes')) for (const vp of SIZES) {
       const id = 's' + vp.join('x'), touch = vp[0] < vp[1];
       await session(id, { force: { base: EV.base.normalWin.event } });
       const before = await balanceOf(id);
@@ -130,7 +134,7 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id }))
     }
 
     // ---- no session: a blocking error, no wallet calls, no demo
-    {
+    if (part('session')) {
       const { ctx, page, rec } = await open(browser, CDN + '/', [1200, 675]);
       await page.waitForFunction(() => !document.getElementById('m-error').hidden, null, { timeout: 30000 }).catch(() => {});
       const st = await page.evaluate(() => ({ err: !document.getElementById('m-error').hidden, text: document.getElementById('errorText').textContent, mode: GOS.mode }));
@@ -140,7 +144,7 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id }))
     }
 
     // ---- replays: every case of every mode plays its exact payout, with no wallet calls
-    {
+    if (part('replays')) {
       const { ctx, page, rec } = await open(browser, 'about:blank', [1200, 675]);
       for (const mode of Object.keys(EV)) for (const k of Object.keys(EV[mode])) {
         const e = EV[mode][k];
@@ -171,7 +175,7 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id }))
     }
 
     // ---- regulated-market flags: net position, RTP, session time
-    for (const vp of [[1200, 675], [400, 225]]) {
+    if (part('flags')) for (const vp of [[1200, 675], [400, 225]]) {
       const id = 'flags' + vp[0];
       await session(id, { force: { base: EV.base.loss.event }, jurisdiction: { displayNetPosition: true, displayRTP: true, displaySessionTimer: true } });
       const { ctx, page, rec } = await open(browser, stakeUrl(id), vp);
@@ -188,7 +192,7 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id }))
     }
 
     // ---- recovery: answers lost on the way back
-    for (const [name, book, fail, expect] of [
+    if (part('recovery')) for (const [name, book, fail, expect] of [
       ['a dropped /wallet/play (a win)', EV.base.normalWin, { path: '/wallet/play', after: true, drop: true }, 'played'],
       ['a dropped /wallet/play (no win)', EV.base.loss, { path: '/wallet/play', after: true, drop: true }, 'recovered'],
       ['a dropped /wallet/end-round', EV.base.normalWin, { path: '/wallet/end-round', after: true, drop: true }, 'played'],
@@ -222,7 +226,7 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id }))
     }
 
     // ---- social wording, three ways in
-    for (const [name, extra, jur] of [['social=true', '&social=true', null], ['an XSC currency', '&currency=XSC', null], ['the socialCasino flag alone', '', { socialCasino: true }]]) {
+    if (part('social')) for (const [name, extra, jur] of [['social=true', '&social=true', null], ['an XSC currency', '&currency=XSC', null], ['the socialCasino flag alone', '', { socialCasino: true }]]) {
       const id = 'soc' + Math.random().toString(36).slice(2, 7);
       await session(id, Object.assign({ force: { base: EV.base.normalWin.event } }, name === 'an XSC currency' ? { currency: 'XSC' } : {}, jur ? { jurisdiction: jur } : {}));
       const { ctx, page } = await open(browser, stakeUrl(id, extra), [1200, 675]);

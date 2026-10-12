@@ -8,12 +8,12 @@ How to rebuild, upload and submit the game, and how it meets Stake's approval ch
 
 | Folder | What it is | Where it goes |
 |---|---|---|
-| `stake/frontend/` | The game: a static build with `index.html` at its root, {{FRONT_FILES}} files, {{FRONT_MB}} MB | The game's **Files** page: import the whole folder, then **Publish Game → Front End** |
-| `stake/math/` | `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base`, `ante` and `bonus`, {{MATH_MB}} MB | The game's **Files** page: import the folder, then **Publish Game → Math** |
+| `stake/frontend/` | The game: a static build with `index.html` at its root, 59 files, 10.1 MB | The game's **Files** page: import the whole folder, then **Publish Game → Front End** |
+| `stake/math/` | `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base`, `ante` and `bonus`, 49.3 MB | The game's **Files** page: import the folder, then **Publish Game → Math** |
 | `stake/replay-events.json` | One book per replay case and mode (below) | Paste into the approval request |
 | `stake/build.json` | Version, math hash, size and sha256 of every file | For your records: proves which files were submitted |
 
-The front end carries `js/build.js` with `target: 'stake'` and the hash of the math it was tested with (`{{MATH_HASH}}`).
+The front end carries `js/build.js` with `target: 'stake'` and the hash of the math it was tested with (`684d406e5d36`).
 
 ## Rebuilding
 
@@ -24,7 +24,7 @@ node tools/sim.js                     # optional: measure RTP in parts after cha
 node tools/export-math.js --scale 1.5 # the books (~9 minutes on 4 cores), writes math/ and js/math-info.js
 node tools/test.js                    # unit checks, including the published math and the package
 node tools/build-stake.js             # stake/ and the copy in the game host repo
-node tools/smoke-stake.js             # the package, end to end, at Stake's sizes (about 6 minutes)
+node tools/smoke-stake.js             # the package, end to end, at Stake's sizes (about 20 minutes; --only recovery,social runs parts)
 ```
 
 `tools/test.js` fails if `stake/` is stale (any file differs from what `build-stake.js` would make from the repo), so rebuild the package after every change. Stake freezes the math after approval: the export you submit is final.
@@ -35,9 +35,13 @@ Each mode's RTP is exactly **96.50%** (weights scaled from the engine's natural 
 
 | Mode | Cost | Books | RTP | Hit rate | Max win | Max win odds |
 |---|---|---|---|---|---|---|
-{{MATH_ROWS}}
+| `base` | 1× | 142,512 | 96.50% | 26.1% (1 in 3.8) | 5,000× | 1 in 2,022,238 spins |
+| `ante` (Double Chance) | 1.25× | 142,509 | 96.50% | 26.0% (1 in 3.8) | 5,000× | 1 in 1,154,175 spins |
+| `bonus` (buy free spins) | 100× | 45,024 | 96.50% | 99.2% | 5,000× | 1 in 7,476 buys |
 
-**Stake's verification script** (`utils/rgs_verification.py` from engineio/math-sdk) passes on `stake/math`: no assertion; RTP 0.965 in every mode, smallest win 0.3×, max 5,000×. It prints one warning, for `bonus`: {{BONUS_WARNING}}. That's a 3-star volatility guideline, not a rule; a 100× buy in a game with 500× orbs has a heavy top end by design.
+Free spins trigger about 1 in 276 base spins and 1 in 158 with Double Chance. The books were sampled at `--scale 1.5` and re-weighted to the exact RTP by 0.986 (base), 0.978 (ante) and 1.023 (bonus).
+
+**Stake's verification script** (`utils/rgs_verification.py` from StakeEngine/math-sdk) passes on `stake/math`: no assertion, books and lookup tables agree; RTP 0.965 in every mode, smallest win 0.3×, max 5,000×. It prints one warning, for `bonus`: `etl40b` 1.62 against a limit of 0.9 (base 0.52 and ante 0.71 are within it). That's a 3-star volatility guideline, not a rule; a 100× buy in a game with 500× orbs has a heavy top end by design. (The v10.1 math, with Topaz at 0.25×/0.75×, fails it: "Payout values must be in increments of 10.")
 
 ## Launching
 
@@ -56,7 +60,9 @@ Book ids per mode (also in `stake/replay-events.json`, with ready-made mock and 
 
 | Mode | Loss | Normal win | Big win (15×+) | Bonus trigger | Win cap (5,000×) |
 |---|---|---|---|---|---|
-{{REPLAY_ROWS}}
+| `base` | 1 (0×) | 30001 (4.8×) | 30113 (23×) | 120001 (7.4×) | 142501 |
+| `ante` | 1 (0×) | 30003 (6×) | 30103 (18.6×) | 120001 (39.1×) | 142501 |
+| `bonus` | 262 (0×) | 1 (145.8×) | 384 (1,960.1×) | 1 (every buy) | 45001 |
 
 ## Jurisdiction flags
 
