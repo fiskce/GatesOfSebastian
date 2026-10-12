@@ -748,7 +748,8 @@
         rot = Math.sin(hl * 9 + i) * 0.05;
       }
       if (c.squash > 0) { sx = 1 + 0.16 * c.squash; sy = 1 - 0.16 * c.squash; }
-      if (c.id === SCATTER && c.pop < 0) { rot += Math.sin(t * 2 + i) * 0.06; s *= 1 + 0.04 * Math.sin(t * 4 + i); sx *= 0.86 + 0.14 * Math.cos(t * 1.7 + i); }
+      // idle scatters turn a little like a coin, never so far that the word on them stops reading (82% at most)
+      if (c.id === SCATTER && c.pop < 0) { rot += Math.sin(t * 2 + i) * 0.06; s *= 1 + 0.04 * Math.sin(t * 4 + i); sx *= 0.91 + 0.09 * Math.cos(t * 1.7 + i); }
       let edge = 0;
       if (c.flipT != null && c.flipT >= 0 && c.pop < 0) {          // a full turn around the vertical axis
         const k = Math.cos(c.flipT * Math.PI * 2);

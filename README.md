@@ -63,6 +63,7 @@ A five-lens review of v10 (game flow, Stake fit, audio, rendering, DOM), each fi
 - **Controls:** turbo follows the jurisdiction everywhere; Buy with Double Chance on, and AUTO during a round, are unlit and say why; one sound per press; "stop when free spins start" stops at the trigger.
 - **Sound:** nothing plays while the tab is hidden; the music comes back as soon as a big win or the feature outro closes; the award clicks keep pace under turbo.
 - **Offline:** the media cache turns over with each release, and a sound sheet whose size doesn't match `sfx.json` is refused (the recipes play instead), so a stale sheet can never play the wrong sounds. The worker clears only older releases of its own version, since fiskce.com serves every version side by side, and it hands a worker left at an old address (`/gatesofsebastianvN/`) the host's forwarding stand-in.
+- **New scatter symbol, "Storm Seal":** a forged gold medallion with a milled rim, a dusk-storm enamel field and a gold bolt that breaks out over the rim, and **SCATTER** on a ruby ribbon across it, in Cinzel. It reads as a word on the 1280×720 board and as a gold disc with a red band at 400×225; it is drawn in code (`tools/draw-scatter.js`). Idle scatters now turn less (82% at most) so the word keeps reading.
 - **Amounts:** never more decimals than the currency has (two for USD), so a sub-cent amount such as 3.025 shows as $3.03; the balance and wins stay exact underneath.
 - **Rendering:** enamel plates are freed on resize and bake their shadow at low resolution; brushed texture reaches the plates' edges; big-win coins still in the air finish their fall over the board.
 
@@ -200,7 +201,7 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 
 | What | Where |
 |---|---|
-| Symbol art | Replace PNGs in `assets/symbols/` (keep the names), or edit `SYMBOL_IMAGES` in `js/board.js`. Use `''` for the built-in vector gem. |
+| Symbol art | Replace PNGs in `assets/symbols/` (keep the names), or edit `SYMBOL_IMAGES` in `js/board.js`. Use `''` for the built-in vector gem. The scatter is drawn by `node tools/draw-scatter.js` (colours, word and layout are parameters at the top). |
 | Sebastian | Replace `art/sebastian_idle.gif` / `art/sebastian_shoot.gif` (930×825, transparent, feet on the same line) and run `python3 tools/build-sebastian.py` (needs Pillow). The barrel-tip table `TIP` and the frame numbers for aim/fire in `js/sebastian.js` are measured on the current shoot clip. |
 | Wording | `js/strings.js`: every player-visible string, with its social-casino variant. |
 | Currencies | `CURRENCIES` in `js/core.js`. |
@@ -241,6 +242,7 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 | `tools/sim.js` | Multi-threaded RTP simulator |
 | `tools/test.js` | Crypto, determinism, engine invariants, math fingerprint, book events round-trip, offline-cache coverage, sound and string coverage |
 | `tools/render-sfx.js`, `tools/test-sfx.js` | Render the sound sheets from the recipes; check them |
+| `tools/draw-scatter.js` | Draws the SCATTER symbol (`assets/symbols/scatter.png`) in headless Chromium; every layer is a parameter at the top |
 | `tools/export-math.js` | Stake Engine math files (books, lookup tables, index) |
 | `tools/mock-rgs.js` | Local stand-in for Stake's RGS, serving the game and the books |
 | `tools/build-sebastian.py` | Sebastian's sprite sheets from `art/` |
