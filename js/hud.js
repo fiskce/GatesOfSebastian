@@ -579,7 +579,9 @@
   const freshMessage = () => { const age = G.clock.real - S.messageT; return S.message && age <= 3 && !S.message.startsWith(T('win') + ' ') ? S.message : ''; };
   // a message with no room in the bar shows as a pill on the hint line under the board
   function floatToast(ctx, msg) {
-    const size = 13, age = G.clock.real - S.messageT, a = Math.min(1, (3 - age) / 0.3), W = G.W, ty = G.L.noHint ? G.L.reel.y + G.L.reel.h - size * 1.4 : G.L.hintY;
+    // on the hint row, unless that row carries the session line: then over the board's lower edge
+    const size = 13, age = G.clock.real - S.messageT, a = Math.min(1, (3 - age) / 0.3), W = G.W;
+    const ty = G.L.noHint || H.sessionLine ? G.L.reel.y + G.L.reel.h - size * 1.4 : G.L.hintY;
     ctx.save(); ctx.globalAlpha = G.clamp(a, 0, 1); ctx.font = G.font(size, 800, true);
     const tw = Math.min(W - 24, ctx.measureText(msg).width + size * 2);
     G.roundRect(ctx, W / 2 - tw / 2, ty - size * 0.9, tw, size * 1.8, size * 0.9); ctx.fillStyle = 'rgba(10,12,22,.9)'; ctx.fill();
@@ -736,6 +738,46 @@
   }
 
   // fairness commitment under the board (click opens the verifier)
+  /* Regulated markets: when the RGS asks (displayNetPosition, displayRTP, displaySessionTimer) the
+   * player's net position this session, the mode's RTP and the session time stay on screen. */
+  H.sessionFacts = () => {
+    const R = G.RGS, out = [];
+    if (!R || !R.session) return out;
+    const s = R.session;
+    if (G.allow('net')) {
+      const pend = s.pending ? Math.min(Math.round(S.roundWin * 1e6), s.pending.winMicro) : 0;
+      const net = (s.wonMicro + pend - s.betMicro) / 1e6;
+      out.push([T('sessNet'), (net > 0 ? '+' : net < 0 ? '−' : '') + G.money(Math.abs(net))]);
+    }
+    if (G.allow('rtp')) {
+      const m = (window.GOS_MATH && GOS_MATH.modes) || {}, mode = S.ante ? 'ante' : 'base';
+      out.push([T('sessRtp'), (m[mode] ? m[mode].rtp : 96.5).toFixed(2) + '%']);
+    }
+    if (G.allow('timer')) {
+      const t = Math.floor((Date.now() - s.t0) / 1000), h = Math.floor(t / 3600), mm = Math.floor(t / 60) % 60, ss = t % 60;
+      out.push([T('sessTime'), (h ? h + ':' + String(mm).padStart(2, '0') : String(mm)) + ':' + String(ss).padStart(2, '0')]);
+    }
+    return out;
+  };
+  // drawn outside the world transform, so it never shakes or zooms
+  H.drawSession = ctx => {
+    const facts = H.sessionFacts(), L = G.L;
+    H.sessionLine = false;
+    if (!facts.length) return;
+    if (!L.noHint) {           // one line on the hint row, under the board
+      const size = G.clamp(L.hintH * 0.36, 11, 12);
+      G.text(ctx, facts.map(f => f[0] + ' ' + f[1]).join('  ·  '), L.reel.x + L.reel.w / 2, L.hintY, size, TXT2, { weight: 700, maxW: G.W * 0.94, tabular: true, min: 11 });
+      H.sessionLine = true;
+      return;
+    }
+    // compact (400x225): the corners of the top band, either side of the plaque
+    const size = Math.max(8, Math.min(11, Math.floor(L.topH * 0.36))), y = L.topH * 0.5, room = Math.max(40, L.reel.x - 10);
+    const net = facts.find(f => f[0] === T('sessNet')), rest = facts.filter(f => f !== net);
+    const fit = (f, maxW) => { ctx.font = G.font(size, 700); const s = f[0] + ' ' + f[1]; return ctx.measureText(s).width <= maxW ? s : f[1]; };
+    if (net) G.text(ctx, fit(net, room), 6, y, size, TXT2, { weight: 700, align: 'left', maxW: room, tabular: true, min: 8 });
+    if (rest.length) G.text(ctx, rest.map(f => fit(f, room / rest.length)).join(' · '), G.W - 6, y, size, TXT2, { weight: 700, align: 'right', maxW: room, tabular: true, min: 8 });
+  };
+
   H.drawHint = ctx => {
     const L = G.L;
     if (!window.ProvablyFair || !G.allow('fair') || L.noHint || H.toasting) return;

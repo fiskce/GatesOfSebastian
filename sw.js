@@ -13,7 +13,7 @@
  *    cached on first use; offline without them, the recipes render the same sounds)
  * Bump VERSION on every release.
  */
-const VERSION = 'gos10-core-4';
+const VERSION = 'gos10-core-5';
 const MEDIA = VERSION.replace('-core-', '-media-');      // media turns over with each release too, so a sheet never outlives its sfx.json
 const OWN = new RegExp('^' + VERSION.split('-')[0] + '-(core|media)');      // this version's caches: gos10-core-*, gos10-media*
 const CORE = [
@@ -33,6 +33,7 @@ const CORE = [
   'js/core.js',
   'js/materials.js',
   'js/rgs.js',
+  'js/build.js',
   'js/fx.js',
   'js/scene.js',
   'js/board.js',
@@ -71,6 +72,7 @@ const CORE = [
   'sounds/sfx-world.ogg',
   'sounds/sfx-fs.ogg',
   'sounds/thunder.ogg',
+  'sounds/thunder.m4a',
 ];
 
 self.addEventListener('install', e => {

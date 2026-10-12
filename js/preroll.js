@@ -2,7 +2,7 @@
  *
  * Loaded right after the #preroll markup, before everything else, so the sting
  * is the first thing on screen. The game keeps loading behind it and only
- * shows its loader/splash once window.PREROLL resolves.
+ * shows its loader/splash once window.GOS_INTRO resolves.
  *
  * Fill: the clip covers the whole screen when that keeps the "Only on Stake"
  * text in view (any landscape screen). On narrower screens it is scaled as far
@@ -24,7 +24,7 @@
   const back = document.getElementById('prerollBack');
   const tap = document.getElementById('prerollTap');
   let finish;
-  window.PREROLL = new Promise(res => { finish = res; });
+  window.GOS_INTRO = new Promise(res => { finish = res; });
   if (!box || !video) { finish(); return; }
 
   let done = false, started = false, waitingTap = false, stall = 0;

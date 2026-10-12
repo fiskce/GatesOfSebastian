@@ -48,6 +48,7 @@
     PANELS.forEach(p => { $('m-' + p).hidden = p !== name; });
     lastFocus = document.activeElement;
     if (name === 'fair') renderFair();
+    if (name === 'menu') renderSession();
     if (name === 'stats') G.Stats.renderPanel();
     if (name === 'buy') $('buyPrice').textContent = G.money(G.buyCost());
     if (name === 'credit') $('creditText').innerHTML = T(G.allow('resetBalance') ? 'lowDemo' : 'lowLive', { v: G.money(S.credit) });
@@ -58,6 +59,13 @@
     shieldFromOpeningTap($('m-' + name));
     if (!(opts && opts.quiet)) AudioEngine.play('ui.open');
   };
+  // the session facts the RGS asks for, in the menu too (refreshed every second while it is open)
+  function renderSession() {
+    const el = $('sessionFacts'), facts = G.HUD.sessionFacts();
+    el.hidden = !facts.length;
+    el.innerHTML = facts.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+  }
+  setInterval(() => { if (!$('m-menu').hidden) renderSession(); }, 1000);
   UI.fullscreen = () => {
     const d = document;
     if (d.fullscreenElement) d.exitFullscreen && d.exitFullscreen();
@@ -245,11 +253,13 @@
     const bet = w('bet', 'play amount');
     const rtp = m => (md[m] ? md[m].rtp.toFixed(2) : '96.50') + '%';
     const cost = m => (md[m] ? md[m].cost : { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X }[m]);
+    const maxX = m => ((md[m] && md[m].maxWinX) || E.MAX_WIN_X).toLocaleString('en-US');
+    const costs = w('Costs', 'Uses');
     const ctl = [
       [w('Spin', 'Spin') + ' (Space / Enter)', G.allow('slam') ? 'Starts a round. Press again, or tap the board, to hurry the spin along; it also skips win animations.' : 'Starts a round. It also skips win animations.'],
       G.allow('bet') && ['− / + (↓ / ↑)', `Lower or raise the ${bet}; hold to keep stepping.`],
       G.allow('bet') && [w('BET', 'PLAY') + ' (in the bar)', `Tap it to pick from every ${bet} level.`],
-      G.allow('ante') && [w('Double chance', 'Double chance'), `Costs 1.25× the ${bet} for each spin and free spins trigger more often. Wins are still multiples of the ${bet}.`],
+      G.allow('ante') && [w('Double chance', 'Double chance'), `${costs} 1.25× the ${bet} for each spin and free spins trigger more often. Wins are still multiples of the ${bet}.`],
       G.allow('buy') && [w('Buy free spins', 'Get free spins') + ' (B)', `Starts 15 free spins straight away for ${cost('bonus')}× the ${bet}. Double chance must be off.`],
       G.allow('auto') && ['Autoplay (A)', `Plays 10, 25, 50, 100 or unlimited rounds in a row, with optional stops: when the balance drops by a set amount, on a big single win, or when free spins start. Press it again, or press Spin, to stop. It also stops when the balance is too low.`],
       G.allow('turbo') && ['Turbo (T)', 'Faster animations. The outcome is the same.'],
@@ -264,9 +274,9 @@
       ['Esc', 'Closes a panel.'],
     ].filter(Boolean);
     const modes = [
-      ['base', 'Base game', `Costs 1× the ${bet}.`],
-      G.allow('ante') && ['ante', 'Double chance', `Costs ${cost('ante')}× the ${bet}; free spins trigger more often.`],
-      G.allow('buy') && ['bonus', w('Buy free spins', 'Get free spins'), `Costs ${cost('bonus')}× the ${bet}; starts the free spins straight away.`],
+      ['base', 'Base game', `${costs} 1× the ${bet}.`],
+      G.allow('ante') && ['ante', 'Double chance', `${costs} ${cost('ante')}× the ${bet}; free spins trigger more often.`],
+      G.allow('buy') && ['bonus', w('Buy free spins', 'Get free spins'), `${costs} ${cost('bonus')}× the ${bet}; starts the free spins straight away.`],
     ].filter(Boolean);
     const tab = (k, label, on) => `<button type="button" class="tab" role="tab" data-tab="${k}" aria-selected="${on}" tabindex="${on ? 0 : -1}">${label}</button>`;
     $('rulesCard').innerHTML = `${X}
@@ -284,7 +294,7 @@
       </section>
       <section role="tabpanel" data-tab="modes" hidden>
       <h3>Game modes</h3>
-      <div class="facts modes">${modes.map(([m, name, d]) => `<div><span><b>${name}</b> · ${d}</span><b>RTP ${rtp(m)}</b></div>`).join('')}</div>
+      <div class="facts modes">${modes.map(([m, name, d]) => `<div><span><b>${name}</b> · ${d}</span><b>RTP ${rtp(m)} · max ${maxX(m)}×</b></div>`).join('')}</div>
       <div class="facts">
         <div><span>Max win</span><b>${E.MAX_WIN_X.toLocaleString('en-US')}×</b></div>
         <div><span>Volatility</span><b>Very high</b></div>

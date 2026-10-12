@@ -42,7 +42,7 @@ window.GOS_STR = (() => {
     // game messages
     msgAutoStopped: 'AUTOPLAY STOPPED',
     msgAutoLow: 'AUTOPLAY STOPPED — BALANCE TOO LOW',
-    msgAutoLoss: 'AUTOPLAY STOPPED — LOSS LIMIT REACHED',
+    msgAutoLoss: ['AUTOPLAY STOPPED — LOSS LIMIT REACHED', 'AUTOPLAY STOPPED — STOP LIMIT REACHED'],
     msgAutoWin: 'AUTOPLAY STOPPED — WIN LIMIT REACHED',
     msgAutoFeature: 'AUTOPLAY STOPPED — FREE SPINS',
     msgAnteFirst: ['TURN OFF DOUBLE CHANCE TO BUY FREE SPINS', 'TURN OFF DOUBLE CHANCE TO GET FREE SPINS'],
@@ -58,8 +58,11 @@ window.GOS_STR = (() => {
     msgTooLow: 'BALANCE TOO LOW',
     msgBuyLocked: ['FREE SPINS CAN’T BE BOUGHT RIGHT NOW', 'FREE SPINS AREN’T AVAILABLE RIGHT NOW'],
     msgResume: 'FINISHING YOUR LAST ROUND',
+    msgRecovered: 'CONNECTION RESTORED — FINISHING YOUR ROUND',
     msgRoundDone: 'ROUND COMPLETE',
     msgPaused: 'PAUSED',
+    // regulated markets: shown only when the RGS asks for them
+    sessNet: 'NET', sessRtp: 'RTP', sessTime: 'SESSION',
     // overlays
     xBet: '×',
     maxWin: 'MAX WIN', maxReached: '{x} REACHED',
@@ -100,7 +103,11 @@ window.GOS_STR = (() => {
     errVal: 'The game server rejected the request. Please reload the game.',
     errMaint: 'The game server is under maintenance. Please try again later.',
     errNet: 'Can’t reach the game server. Check your connection and try again.',
-    errNoRgs: 'The game was opened without a game server address.',
+    errNoRgs: 'The game was opened without a game session. Please start it again from the lobby.',
+    errNetRecovered: 'The connection dropped. Your balance is up to date.',
+    errReplayParams: 'This replay link is incomplete, so the round can’t be shown.',
+    errReplayNotFound: 'This round couldn’t be found.',
+    errReplayState: 'This round couldn’t be replayed.',
     errState: 'This round couldn’t be shown. It has been settled; your balance is up to date.',
     errGen: 'The game server had a problem. Please try again.',
     errEndRound: 'Your last round couldn’t be finished. Reload the game to complete it.',
@@ -108,16 +115,18 @@ window.GOS_STR = (() => {
     resumeLead: ['Your last round didn’t finish. It plays out now at its original bet of <b>{v}</b>.', 'Your last round didn’t finish. It plays out now at its original play amount of <b>{v}</b>.'],
     resumeGo: 'Continue',
     replayTitle: 'Replay',
-    replayBet: ['Bet', 'Play amount'], replayMode: 'Mode', replayCost: 'Cost', replayWin: 'Win', replayTotal: 'Total win',
+    replayBet: ['Bet', 'Play amount'], replayMode: 'Mode', replayCost: ['Cost', 'Played for'], replayWin: 'Win', replayTotal: 'Total win',
     replayPlay: 'Play replay', replayAgain: 'Replay again',
     replayLoading: 'Loading the round…',
     modeBase: 'Base game', modeAnte: 'Double chance', modeBonus: ['Buy free spins', 'Get free spins'],
     canvasLabel: ['Thunder Hunter Sebastian slot game. Space to spin, arrow keys change the bet, T toggles turbo, B buys free spins, A opens autoplay, M mutes, I opens the rules.',
       'Thunder Hunter Sebastian game. Space to spin, arrow keys change the play amount, T toggles turbo, B gets free spins, A opens autoplay, M mutes, I opens the rules.'],
   };
+  // Stake's social-mode list (docs: reference/social-mode), single words and phrases
   const RESTRICTED = ['bet', 'bets', 'betting', 'buy', 'buys', 'bought', 'purchase', 'credit', 'credits', 'stake', 'staked',
-    'wager', 'wagered', 'wagering', 'paytable', 'pay', 'pays', 'paid', 'payout', 'money', 'cash', 'gamble', 'gambling',
-    'deposit', 'withdraw', 'casino', 'win feature'];
+    'wager', 'wagered', 'wagering', 'paytable', 'pay', 'pays', 'paid', 'payout', 'payer', 'money', 'cash', 'gamble', 'gambling',
+    'deposit', 'withdraw', 'casino', 'currency', 'profit', 'rebet', 'win feature', 'loss limit', 'loss streak', 'cost of',
+    'pay table', 'total bet', 'place your bets', 'bonus buy', 'buy bonus', 'paid out', 'pay out', 'pays out'];
 
   const q = new URLSearchParams(location.search);
   const socialCurrency = c => /^(XSC|XGC|XEC)$/i.test(c || '');

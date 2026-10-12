@@ -84,15 +84,23 @@ window.GOS = (() => {
   // ---------------- wording ----------------
   G.T = window.GOS_STR.T;
 
+  // ---------------- diagnostics ----------------
+  // nothing is written to the console unless the URL asks for it (?debug=1): Stake play logs nothing
+  G.debug = /[?&]debug=1\b/.test(location.search);
+  G.log = (...a) => { if (G.debug) console.warn(...a); };
+
   // ---------------- money ----------------
-  // [symbol, symbol after the amount, decimals]. Social currencies read "10.00 SC".
+  // [symbol, symbol after the amount, decimals], as Stake Engine lists them (docs: reference/currencies),
+  // plus a few more it doesn't. Social currencies read "10.00 SC", never with a "$".
   const CURRENCIES = {
-    USD: ['$'], CAD: ['CA$'], MXN: ['MX$'], EUR: ['€'], GBP: ['£'], AUD: ['A$'], NZD: ['NZ$'], BRL: ['R$'], INR: ['₹'],
-    JPY: ['¥', false, 0], KRW: ['₩', false, 0], IDR: ['Rp', false, 0], NGN: ['₦', false, 0], CNY: ['CN¥'], TRY: ['₺'],
-    PHP: ['₱'], ZAR: ['R'], RUB: ['₽', true], CHF: ['CHF '], SEK: ['kr', true], NOK: ['kr', true], CZK: ['Kč', true],
-    DKK: ['kr.', true], PLN: ['zł', true], VND: ['₫', true, 0], CLP: ['CLP', true, 0], ARS: ['ARS', true], PEN: ['S/', true],
-    SAR: ['SAR', true], ILS: ['₪', true], AED: ['AED', true], TND: ['TND', true], OMR: ['OMR', true], QAR: ['QAR', true],
-    XSC: ['SC', true], XEC: ['SC', true], XGC: ['GC', true],
+    USD: ['$'], CAD: ['CA$'], JPY: ['¥', false, 0], EUR: ['€'], RUB: ['₽'], CNY: ['CN¥'], PHP: ['₱'], INR: ['₹'],
+    IDR: ['Rp', false, 0], KRW: ['₩', false, 0], BRL: ['R$'], MXN: ['MX$'], DKK: ['KR', true], PLN: ['zł', true],
+    VND: ['₫', true, 0], TRY: ['₺'], CLP: ['CLP', true, 0], ARS: ['ARS', true], PEN: ['S/'], NGN: ['₦'], SAR: ['SAR', true],
+    ILS: ['ILS', true], AED: ['AED', true], TWD: ['NT$'], NOK: ['kr'], KWD: ['KD'], JOD: ['JD'], CRC: ['₡'], TND: ['TND', true],
+    SGD: ['SG$'], MYR: ['RM'], OMR: ['OMR', true], QAR: ['QAR', true], BHD: ['BD'],
+    XGC: ['GC', true], XSC: ['SC', true], XEC: ['SC', true],
+    // not on Stake's list
+    GBP: ['£'], AUD: ['A$'], NZD: ['NZ$'], ZAR: ['R'], CHF: ['CHF '], SEK: ['kr', true], CZK: ['Kč', true],
   };
   G.currency = 'USD';
   G.setCurrency = code => { G.currency = String(code || 'USD').toUpperCase(); };

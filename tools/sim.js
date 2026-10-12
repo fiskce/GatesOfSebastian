@@ -140,7 +140,7 @@ async function main() {
   console.log(`  Buy (100x stake)   ${pct(m.rtpBuy)} ± ${pct(m.seBuy)}`);
   if (o.rounds) {
     const workers = +o.workers || Math.max(1, os.cpus().length);
-    const r = await run('round', +o.rounds, workers, 4242);
+    const r = await run('round', +o.rounds, workers, 4242, o.config ? JSON.parse(o.config) : null);
     console.log(`\nFull rounds (${r.n.toLocaleString()}): RTP ${pct(mean(r))} ± ${pct(se(r))} · hit ${pct(r.hits / r.n)} · σ ${sd(r).toFixed(1)}x · 100x+ ${pct(r.x100 / r.n, 3)} · max ${r.max.toFixed(0)}x`);
   }
   console.log(`\n(${((Date.now() - t0) / 1000).toFixed(1)}s)`);

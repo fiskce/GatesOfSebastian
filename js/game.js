@@ -83,18 +83,50 @@
         try { await R.refreshBalance(); } catch (e) { /* keep the last known balance */ }
         if (!RgsWallet.canAfford(mode)) throw lowBalance();
       }
-      const round = await R.play(mode, G.betMicro());
-      return roundSource(round);
+      let round;
+      try { round = await R.play(mode, G.betMicro()); }
+      catch (e) {
+        // The answer was lost, or the RGS still holds a round open: ask where things stand. An open
+        // round is played out (it may be the one just bought); otherwise nothing is pending and the
+        // balance just fetched is the true one.
+        if (!/^(NETWORK|TIMEOUT|ERR_GEN|ERR_VAL)$/.test(e.code)) throw e;
+        let r;
+        try { r = await R.status(); } catch (e2) { throw e; }
+        if (!(r && r.active === true)) throw e.code === 'ERR_VAL' ? e : new R.Error('RECOVERED');
+        adoptRound(r);
+        say(T('msgRecovered'));
+        round = r;
+      }
+      const src = roundSource(round, mode);
+      // the session tally behind the net-position display: the bet now, the win once the round settles
+      if (R.session) { R.session.betMicro += R.costMicro(src.mode, G.betMicro()); R.session.pending = { winMicro: Math.round(G.betMicro() * src.payX100 / 100) }; }
+      return src;
     },
-    async settle(src) { await closeRound(src.round); },
+    async settle(src) {
+      await closeRound(src.round);
+      if (R.session && R.session.pending) { R.session.wonMicro += R.session.pending.winMicro; R.session.pending = null; }
+    },
   };
-  function roundSource(round) {
-    let events;
-    try { events = R.eventsOf(round); } catch (e) { events = []; }
+  // a round from the RGS as a spin source; one whose events don't add up is marked broken (and still settled)
+  function roundSource(round, mode) {
+    let events = [], payX100 = 0, ok = true;
+    try { events = R.eventsOf(round); payX100 = R.checkRound(events, round.payoutMultiplier); }
+    catch (e) { ok = false; G.log(e); }
     const src = R.eventSource(events);
     src.round = round;
-    src.broken = !events.length;
+    src.broken = !ok || !events.length;
+    src.payX100 = payX100;
+    src.mode = String(round.mode || mode || 'base').toLowerCase();
+    src.buy = src.mode === 'bonus';
     return src;
+  }
+  // take over a round the RGS has open: its own bet and mode
+  function adoptRound(active) {
+    const amount = Math.round(+active.amount) || G.betMicro();
+    let k = G.BET_MICRO.indexOf(amount);
+    if (k < 0) { G.BET_MICRO.push(amount); G.BET_MICRO.sort((a, b) => a - b); G.BET_STEPS = G.BET_MICRO.map(v => v / 1e6); k = G.BET_MICRO.indexOf(amount); }
+    S.betIndex = k;
+    S.ante = String(active.mode || 'base').toLowerCase() === 'ante';
   }
   // end-round only for a round that is still open (one that paid nothing is closed already)
   async function closeRound(round) {
@@ -124,8 +156,8 @@
     const t0 = performance.now();
     G.Seb.activity();
     let res = null;
-    try { res = await present(src, buy); }
-    catch (e) { console.error(e); if (G.mode === 'rgs') showError(T('errState')); }
+    try { res = await present(src, src.buy != null ? src.buy : buy); }
+    catch (e) { G.log(e); if (G.mode === 'rgs') showError(T('errState')); }
     try { await G.Wallet.settle(src); } catch (e) { S.busy = false; S.auto = 0; return; }
     // some jurisdictions set a minimum time per round
     const minMs = G.mode === 'rgs' ? R.minRoundMs() : 0, left = minMs - (performance.now() - t0);
@@ -526,12 +558,12 @@
     G.Seb.say('fsStart');
     await G.wait(300);
     while (S.fsLeft > 0) {
-      if (!src.hasNext()) { console.warn('the round has no more free spins'); break; }
+      if (!src.hasNext()) { G.log('the round has no more free spins'); break; }
       const r = await spin({ src });
       if (r.maxed) break;
       await G.wait(380);
     }
-    if (src.left && src.left() > 0) console.warn(src.left() + ' spins left over in the round');
+    if (src.left && src.left() > 0) G.log(src.left() + ' spins left over in the round');
     await O.fsOutro(S.fsTotal, S.fsPlayed, G.baseBet(), S.auto > 0 ? 2600 : 6000);
     G.Seb.say(S.fsTotal / G.baseBet() >= 20 ? 'fsGood' : 'fsBad');
     G.Stats.record('featureEnd', { totalX: S.fsTotal / G.baseBet() });
@@ -574,7 +606,10 @@
     if (S.busy || S.inFS || S.auto > 0 || !G.allow('bet')) return false;
     i = G.clamp(i, 0, G.BET_STEPS.length - 1);
     if (i === S.betIndex) return false;
-    S.betIndex = i; G.save();
+    S.betIndex = i;
+    // Stake play remembers the chosen bet per currency, so a refresh keeps it [187]
+    if (G.mode === 'rgs') G.settings.lastBet = Object.assign({}, G.settings.lastBet, { [G.currency]: G.betMicro() });
+    G.save();
     say(T('msgBet', { v: G.money(G.baseBet()) }));
     return true;
   };
@@ -630,17 +665,12 @@
   // ---------------- unfinished round (resume) ----------------
   // the RGS still has a round open from last time: play it out at its own bet, then close it
   async function resume(active) {
-    const amount = Math.round(+active.amount) || G.betMicro();
-    let k = G.BET_MICRO.indexOf(amount);
-    if (k < 0) { G.BET_MICRO.push(amount); G.BET_MICRO.sort((a, b) => a - b); G.BET_STEPS = G.BET_MICRO.map(v => v / 1e6); k = G.BET_MICRO.indexOf(amount); }
-    S.betIndex = k;
-    const mode = String(active.mode || 'base').toLowerCase();
-    S.ante = mode === 'ante';
+    adoptRound(active);
     S.busy = true;
     say(T('msgResume'));
     const src = roundSource(active);
-    try { await present(src, mode === 'bonus'); }
-    catch (e) { console.error(e); showError(T('errState')); }
+    try { await present(src, src.buy); }
+    catch (e) { G.log(e); showError(T('errState')); }
     try { await closeRound(Object.assign({}, active, { active: true })); } catch (e) { return; }
     S.busy = false; S.slam = false; setPace();
     say(T('msgRoundDone'));
@@ -658,7 +688,7 @@
     S.busy = true;
     const mode = R.replay.mode;
     try { await present(R.eventSource(replayData.events), mode === 'bonus'); }
-    catch (e) { console.error(e); showError(T('errState')); }
+    catch (e) { G.log(e); showError(T('errState')); }
     S.busy = false; S.slam = false; setPace();
     G.UI.showReplay(replayData, S.roundWin);
   };
@@ -901,6 +931,7 @@
       ctx.fillStyle = `rgba(${cam.flashColor},${cam.flash * 0.45})`; ctx.fillRect(0, 0, W, Hh);
       ctx.globalCompositeOperation = 'source-over';
     }
+    H.drawSession(ctx);
     H.drawBottom(ctx);
     O.draw(ctx);
     FX.draw(ctx, 2);
@@ -952,7 +983,7 @@
     const rgs = G.mode === 'rgs' ? R.authenticate() : G.mode === 'replay' ? R.fetchReplay() : Promise.resolve(null);
     rgs.catch(() => {});
     await Promise.all([fonts, B.loadAssets(p => { pAssets = p; show(); })]);
-    await window.PREROLL;                 // the "Only on Stake" sting plays first
+    await window.GOS_INTRO;               // the demo's intro clip plays first (there is none in the Stake package)
     let rgsData = null, rgsErr = null;
     try { rgsData = await rgs; } catch (e) { rgsErr = e; }
     if (G.mode === 'replay' && rgsData) {

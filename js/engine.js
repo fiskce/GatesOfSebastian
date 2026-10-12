@@ -30,7 +30,8 @@
   const MAX_WIN_X = 5000;
   const BUY_COST_X = 100, ANTE_COST = 1.25;
 
-  // pays are x total bet for 8-9 / 10-11 / 12+ of a kind
+  // pays are x total bet for 8-9 / 10-11 / 12+ of a kind. Every pay is a whole number of tenths:
+  // Stake's math verification only accepts payouts in 0.1x steps (multipliers are whole numbers)
   const SYMBOLS = {
     crown:   { pays: { 8: 10,   10: 25,   12: 50 } },
     ring:    { pays: { 8: 2.5,  10: 10,   12: 25 } },
@@ -40,7 +41,7 @@
     purple:  { pays: { 8: 0.8,  10: 1.5,  12: 4 } },
     green:   { pays: { 8: 0.5,  10: 1,    12: 3 } },
     blue:    { pays: { 8: 0.4,  10: 0.9,  12: 2.5 } },
-    gold:    { pays: { 8: 0.25, 10: 0.75, 12: 2 } },
+    gold:    { pays: { 8: 0.3,  10: 0.8,  12: 2 } },
   };
   const PAY_ORDER = ['crown', 'ring', 'glass', 'chalice', 'red', 'purple', 'green', 'blue', 'gold'];
 
@@ -57,12 +58,14 @@
   // numbers). pScatterFs is deliberately independent of the ante, so the
   // feature is worth the same however it was reached (natural, ante or buy).
   const CONFIG = {
-    payScale: 1.00,
+    payScale: 1.00,        // must stay 1: any other scale breaks the 0.1x payout steps
     pScatterBase: 0.0193,
     pScatterAnte: 0.0227,
     pScatterFs: 0.0205,
-    baseOrbChance: 0.15,   // per winning tumble step (base game)
-    fsOrbChance: 0.543,    // per winning tumble step (free spins)
+    // v10.2: retuned for Topaz paying 0.3/0.8/2x (was 0.25/0.75/2). tools/sim.js, 8M spins + 400k features:
+    // base 96.41%, Double Chance 96.21%, buy 96.51% (each +-0.4); the export weights every mode to 96.50%
+    baseOrbChance: 0.1427, // per winning tumble step (base game)
+    fsOrbChance: 0.528,    // per winning tumble step (free spins)
     fsOrbDouble: 0.26,     // chance a spawning free-spins step drops a 2nd orb
     reelW: { crown: 6, ring: 8, glass: 10, chalice: 12, red: 14, purple: 15, green: 16, blue: 18, gold: 20 },
   };

@@ -6,7 +6,9 @@
  *                  can't be reached the game stops with an error; it never
  *                  falls back to the demo
  *   neither        the local demo (fiskce.com): local balance, outcomes from
- *                  the provably-fair stream, exactly as before
+ *                  the provably-fair stream, exactly as before. The Stake
+ *                  package (js/build.js target 'stake') has no demo: without a
+ *                  session it says so and stops
  *
  * Amounts on the wire are integers in millionths of the currency. Book
  * payoutMultiplier values are hundredths of the base bet; the RGS reports a
@@ -23,7 +25,8 @@
   const API = 1e6;
   const R = G.RGS = {};
 
-  G.mode = q.get('replay') === 'true' ? 'replay' : q.get('sessionID') ? 'rgs' : 'demo';
+  const STAKE_BUILD = (window.GOS_BUILD || {}).target === 'stake';
+  G.mode = q.get('replay') === 'true' ? 'replay' : q.get('sessionID') || STAKE_BUILD ? 'rgs' : 'demo';
   R.sessionID = q.get('sessionID') || '';
   R.lang = (q.get('lang') || 'en').slice(0, 8);
   R.device = q.get('device') || '';
@@ -111,16 +114,32 @@
   const COST100 = { base: 100, ante: Math.round(E.ANTE_COST * 100), bonus: E.BUY_COST_X * 100 };
   R.costMicro = (mode, amount) => (amount * COST100[mode]) / 100;
 
+  const authenticate = () => {
+    if (!R.sessionID) return Promise.reject(new RgsError('NO_RGS'));
+    return retry(() => call('/wallet/authenticate', { sessionID: R.sessionID, language: R.lang }), 3);
+  };
   R.authenticate = async () => {
-    const d = await retry(() => call('/wallet/authenticate', { sessionID: R.sessionID, language: R.lang }), 3);
+    const d = await authenticate();
     applyBalance(d.balance);
     const cfg = d.config || {};
     const { levels, index } = betLevels(cfg);
     useLevels(levels, index);
+    // a refresh keeps the bet [187]: the open (or last) round's bet, else the one this player last chose here
+    const keep = micro => { const k = levels.indexOf(Math.round(+micro)); if (k >= 0) S.betIndex = k; return k >= 0; };
+    const saved = G.settings.lastBet && G.settings.lastBet[G.currency];
+    if (!(d.round && keep(d.round.amount))) keep(saved);
     R.flags = cfg.jurisdiction || {};
     if (R.flags.socialCasino || STR.socialCurrency(G.currency)) STR.setSocial(true);
     R.active = d.round && d.round.active === true ? d.round : null;
+    R.session = { t0: Date.now(), betMicro: 0, wonMicro: 0, pending: null };
     return d;
+  };
+  // where things stand after a lost answer: the balance, and the round the RGS has (open or last), if any.
+  // Bet levels and flags are left as they are.
+  R.status = async () => {
+    const d = await authenticate();
+    applyBalance(d.balance);
+    return d.round || null;
   };
   // never retried: if the answer is lost the RGS may already have charged the bet
   R.play = async (mode, amount) => {
@@ -129,7 +148,19 @@
     if (!d.round) throw new RgsError('ERR_GEN', 'no round in the response');
     return d.round;
   };
-  R.endRound = async () => { const d = await retry(() => call('/wallet/end-round', { sessionID: R.sessionID })); applyBalance(d.balance); return d; };
+  // A lost answer may still have settled the round: if a retry is refused, ask the RGS. A round it no
+  // longer holds open was settled, and the balance it reports is the settled one.
+  R.endRound = async () => {
+    try {
+      const d = await retry(() => call('/wallet/end-round', { sessionID: R.sessionID }));
+      applyBalance(d.balance); return d;
+    } catch (e) {
+      let r;
+      try { r = await R.status(); } catch (e2) { throw e; }
+      if (r && r.active === true) throw e;
+      return { settled: true };
+    }
+  };
   R.refreshBalance = async () => { const d = await retry(() => call('/wallet/balance', { sessionID: R.sessionID }), 2); applyBalance(d.balance); return d; };
 
   // a round's book events (the RGS may hand state over as a JSON string)
@@ -143,7 +174,7 @@
 
   // ---------------- replay ----------------
   R.replay = {
-    game: q.get('game') || '', version: q.get('version') || '', mode: (q.get('mode') || 'base').toLowerCase(), event: q.get('event') || '',
+    game: q.get('game') || '', version: q.get('version') || '', mode: (q.get('mode') || '').toLowerCase(), event: q.get('event') || '',
   };
   // the bet: millionths like every RGS amount; a plain decimal ("1.5") is read as currency
   (() => {
@@ -152,10 +183,39 @@
     if (!(micro > 0)) micro = API;
     R.replay.amount = micro;
   })();
+  // the modes this game publishes (index.json); a replay of anything else can't be shown
+  R.modes = () => Object.keys((window.GOS_MATH && GOS_MATH.modes) || { base: 1, ante: 1, bonus: 1 });
   R.fetchReplay = async () => {
     const p = R.replay, enc = encodeURIComponent;
-    const d = await retry(() => call(`/bet/replay/${enc(p.game)}/${enc(p.version)}/${enc(p.mode)}/${enc(p.event)}`), 3);
-    return { payoutMultiplier: +d.payoutMultiplier || 0, costMultiplier: +d.costMultiplier || null, events: R.eventsOf(d) };
+    if (!R.base || !p.game || !p.version || !p.event || R.modes().indexOf(p.mode) < 0) throw new RgsError('REPLAY_PARAMS');
+    let d;
+    try { d = await retry(() => call(`/bet/replay/${enc(p.game)}/${enc(p.version)}/${enc(p.mode)}/${enc(p.event)}`), 3); }
+    catch (e) { throw /^(NOT_FOUND|HTTP_404)$/.test(e.code) ? new RgsError('REPLAY_NOT_FOUND') : e; }
+    const events = R.eventsOf(d);
+    R.checkRound(events, d.payoutMultiplier);
+    return { payoutMultiplier: +d.payoutMultiplier || 0, costMultiplier: +d.costMultiplier || null, events };
+  };
+
+  /* A round's events must add up: every spin rebuilds through Engine.expandSpin (which checks the
+   * board, the wins and the orbs), their wins sum to the final win and to the round's payout. The
+   * payout is read as a plain multiple of the bet, or as hundredths of it (book units), whichever the
+   * RGS sends. Throws ERR_STATE if anything disagrees. */
+  R.checkRound = (events, payout) => {
+    let persistent = 0, sum = 0, fin = null;
+    try {
+      for (const e of events) {
+        if (!e) continue;
+        if (e.type === 'spin') {
+          const out = E.expandSpin(JSON.parse(JSON.stringify(e)), e.mode === 'fs' ? persistent : 0);
+          if (e.mode === 'fs') persistent = out.ev.persistentAfter;
+          sum += e.win;
+        } else if (e.type === 'finalWin') fin = e.win;
+      }
+    } catch (err) { throw new RgsError('ERR_STATE', err.message); }
+    const pm = +payout;
+    const ok = (fin == null || fin === sum) && (payout == null || payout === '' || !Number.isFinite(pm) || Math.round(pm * 100) === sum || Math.round(pm) === sum);
+    if (!ok) throw new RgsError('ERR_STATE', 'the round does not add up');
+    return sum;
   };
 
   // ---------------- what a mode allows ----------------
@@ -171,6 +231,11 @@
       case 'fullscreen': return !f.disabledFullscreen;
       case 'fair': case 'stats': case 'resetBalance': return G.mode === 'demo';
       case 'balance': return G.mode !== 'replay';
+      // regulated markets: what the RGS asks the game to show (net position, RTP, session time)
+      case 'net': return G.mode === 'rgs' && !!f.displayNetPosition;
+      case 'rtp': return G.mode === 'rgs' && !!f.displayRTP;
+      case 'timer': return G.mode === 'rgs' && !!f.displaySessionTimer;
+      case 'superTurbo': return !f.disabledSuperTurbo;        // read for completeness: the game has no super turbo
       default: return true;
     }
   };
@@ -202,7 +267,9 @@
     const c = (e && e.code) || 'ERR_GEN';
     const k = {
       ERR_IPB: 'errIPB', ERR_GLE: 'errGLE', ERR_IS: 'errSession', ERR_ATE: 'errSession', ERR_LOC: 'errLoc', ERR_VAL: 'errVal',
-      ERR_MAINTENANCE: 'errMaint', NETWORK: 'errNet', TIMEOUT: 'errNet', NO_RGS: 'errNoRgs', ERR_STATE: 'errState',
+      ERR_MAINTENANCE: 'errMaint', NETWORK: 'errNet', TIMEOUT: 'errNet', NO_RGS: 'errNoRgs',
+      ERR_STATE: G.mode === 'replay' ? 'errReplayState' : 'errState', RECOVERED: 'errNetRecovered',
+      REPLAY_PARAMS: 'errReplayParams', REPLAY_NOT_FOUND: 'errReplayNotFound',
     }[c] || 'errGen';
     return T(k) + (k === 'errGen' ? ' (' + c + ')' : '');
   };

@@ -20,15 +20,19 @@ const AudioEngine = (() => {
   if (AC) { try { ctx = new AC({ latencyHint: 'interactive' }); } catch (e) { ctx = new AC(); } }
 
   /* ===================================================================
-   * SOUND FILES — set a path (ideally .ogg) to use your own audio for a
-   * sound; leave '' to use the built-in version. The two music tracks loop
-   * (see TRACKS below). Everything else lives in the sound sheets.
+   * SOUND FILES — set paths to use your own audio for a sound: an .ogg, and
+   * an .m4a twin for Safari, which can't decode Vorbis (tools/encode-m4a.js
+   * makes them); leave '' to use the built-in version. The two music tracks
+   * loop (see TRACKS below). Everything else lives in the sound sheets.
    * =================================================================== */
   const SOUND_FILES = {
-    thunder:      'sounds/thunder.ogg',
-    music:        'sounds/music-base.ogg',
-    musicFeature: 'sounds/music-feature.ogg',
+    thunder:      { ogg: 'sounds/thunder.ogg', m4a: 'sounds/thunder.m4a' },
+    music:        { ogg: 'sounds/music-base.ogg', m4a: 'sounds/music-base.m4a' },
+    musicFeature: { ogg: 'sounds/music-feature.ogg', m4a: 'sounds/music-feature.m4a' },
   };
+  // the sources' lengths: an AAC decode that comes out longer still holds the encoder's priming at its start
+  const SOURCE_DUR = { thunder: 1.115563, music: 89.096145, musicFeature: 54.942313 };
+  const shift = {};
   const SHEETS = 'sounds/sfx.json';
 
   if (!ctx) {
@@ -95,13 +99,22 @@ const AudioEngine = (() => {
     if (!on) live.slice().forEach(v => v.stop(0.1));
   }
 
-  async function load(name, url) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(res.status);
-      buffers[name] = await ctx.decodeAudioData(await res.arrayBuffer());
-      if (musicOn && !cur && TRACKS[mode].file === name) playMode(0.05, 1);   // the track arrived after the synth pad started
-    } catch (e) { /* missing/blocked (e.g. file://) -> synth fallback */ }
+  // the format this browser decodes first (Vorbis, else AAC), then the other
+  async function load(name, spec) {
+    const files = typeof spec === 'string' ? { ogg: spec } : spec;
+    for (const fmt of vorbis ? ['ogg', 'm4a'] : ['m4a', 'ogg']) {
+      if (!files[fmt]) continue;
+      try {
+        const res = await fetch(files[fmt]);
+        if (!res.ok) throw new Error(res.status);
+        const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+        const extra = buf.duration - (SOURCE_DUR[name] || buf.duration);
+        shift[name] = fmt === 'm4a' && extra > 0.005 && extra < 0.08 ? extra : 0;
+        buffers[name] = buf;
+        if (musicOn && !cur && TRACKS[mode].file === name) playMode(0.05, 1);   // the track arrived after the synth pad started
+        return;
+      } catch (e) { /* missing/blocked (e.g. file://) or undecodable: try the other format, else the synth fallback */ }
+    }
   }
 
   // ---------------- sound sheets ----------------
@@ -262,7 +275,7 @@ const AudioEngine = (() => {
     const rate = opts.rate || 1, gain = opts.gain != null ? opts.gain : 1;
     if (buffers[name]) { const src = playBuffer(buffers[name], gain, rate, BUS.world); return makeVoice(name, src.src, src.g, 3, ctx.currentTime + buffers[name].duration / rate); }
     if (synths[name]) { synths[name](rate, gain); return NOVOICE; }
-    if (!warned[name]) { warned[name] = true; console.warn('AudioEngine: no sound named "' + name + '"'); }
+    if (!warned[name]) { warned[name] = true; if (window.GOS && GOS.log) GOS.log('AudioEngine: no sound named "' + name + '"'); }
     return NOVOICE;
   }
   function playKit(name, n, opts) {
@@ -408,20 +421,22 @@ const AudioEngine = (() => {
     if (!buf) return false;
     const src = ctx.createBufferSource(), g = ctx.createGain(), t = Math.max(ctx.currentTime, at || 0);
     src.buffer = buf; src.loop = true;
-    src.loopStart = tr.loopStart; src.loopEnd = Math.min(tr.loopEnd, buf.duration);
+    // an AAC decode may still carry the encoder's priming: every point in the music moves by it
+    const sh = shift[tr.file] || 0;
+    src.loopStart = tr.loopStart + sh; src.loopEnd = Math.min(tr.loopEnd + sh, buf.duration);
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(tr.gain, t + Math.max(0.02, fade));
     src.connect(g); g.connect(musicVol);
-    const off = Math.min(resumeAt[key], src.loopEnd - 0.05);
+    const off = Math.min(resumeAt[key] + sh, src.loopEnd - 0.05);
     src.start(t, off);
-    cur = { key, src, g, t0: t, off, end: src.loopEnd };
+    cur = { key, src, g, t0: t, off, end: src.loopEnd, sh };
     return true;
   }
-  // where in the file a playing track is now (follows the loop)
+  // where in the music a playing track is now (follows the loop; seconds of the source, not the decode)
   function position(c) {
-    const ls = TRACKS[c.key].loopStart;
+    const ls = TRACKS[c.key].loopStart + c.sh;
     let p = c.off + Math.max(0, ctx.currentTime - c.t0);
     if (p > c.end) p = ls + (p - c.end) % (c.end - ls);
-    return p;
+    return p - c.sh;
   }
   function stopTrack(fade) {
     if (!cur) return;
@@ -472,9 +487,9 @@ const AudioEngine = (() => {
     if (!musicOn) return;
     const dba = opts && opts.downbeatAt;
     if (m === 'fs' && dba) {
-      const lead = TRACKS.fs.loopStart, at = dba - lead;
+      const lead = TRACKS.fs.loopStart, sh = shift.musicFeature || 0, at = dba - lead - sh;
       if (at >= ctx.currentTime) { stopTrack(Math.max(0.3, at - ctx.currentTime)); if (startTrack('fs', 0.05, at)) stopSynthMusic(); return; }
-      resumeAt.fs = Math.min(lead, ctx.currentTime - at);       // too late for the intro: join it in step
+      resumeAt.fs = Math.min(lead, ctx.currentTime - at - sh);  // too late for the intro: join it in step
       playMode(0.3, 0.05); return;
     }
     playMode(1.2, m === 'fs' ? 0.3 : 1.5);

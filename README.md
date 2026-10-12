@@ -23,6 +23,17 @@ Opening `index.html` straight from disk also works, but the browser then blocks 
 
 **Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet (hold − / + to keep stepping; tap BET to pick any level), T toggles turbo, B buys free spins, A opens autoplay, M mutes and I opens the rules. Taps skip win celebrations. A control that can't be used right now is unlit and says why when pressed. The rules list every control.
 
+## What's new in v10.2: ready for Stake Engine
+
+v10.2 makes the game ready to upload to Stake Engine: `node tools/build-stake.js` writes the upload package into `stake/`, and [STAKE.md](STAKE.md) covers uploading it, the launch and replay URLs, and how the game meets Stake's approval checklist.
+
+- **Math in 0.1× steps.** Stake's math verification only accepts payouts that are whole tenths of the bet. Topaz paid 0.25× and 0.75×; it now pays 0.3× and 0.8× (2× for 12+ is unchanged). The orb chances are retuned to keep the RTP (base 0.15 → 0.1427 per winning tumble, free spins 0.543 → 0.528), and the books are exported again: every mode is exactly 96.50%, and the exporter, the tests and the package build all check the 0.1× steps.
+- **The package** (`stake/frontend`, `stake/math`, `stake/replay-events.json`, `stake/build.json`): the game without the fiskce.com intro (no Stake branding), the service worker, the manifest or the video, plus the math, a book per replay case and mode for the review, and the size and sha256 of every file. It never runs the local demo. A copy goes to the game host repo. `tools/test.js` fails if the package is stale, and `tools/smoke-stake.js` plays it end to end at Stake's seven reference sizes, with the CDN and the RGS on separate origins.
+- **Lost answers recover**, a **refresh keeps the bet**, **replays validate** their link and their round, and every round's events are checked before they play (see the Stake section below).
+- **Regulated markets**: net position, RTP and session time when the RGS asks for them.
+- **Currencies** as Stake lists them; Stake's full social-mode list of words and phrases ("loss limit", "cost of" and the rest) is checked; nothing is written to the console.
+- **Safari music**: AAC twins of the music and thunder (`tools/encode-m4a.js`), picked where Vorbis can't play, with the encoder's priming measured and removed.
+
 ## What's new in v10: "Forged Storm"
 
 A major refinement, not a new game: the same board, Sebastian, dusk-to-storm sky and Greek-key lintel, made into one consistent physical object with its own sound.
@@ -70,17 +81,19 @@ A five-lens review of v10 (game flow, Stake fit, audio, rendering, DOM), each fi
 ## What's new in v9
 
 **Playable on Stake Engine** (`js/rgs.js`)
-- With `sessionID` and `rgs_url` in the URL the game signs in with `/wallet/authenticate` while it loads. The balance, currency, bet levels, default bet and jurisdiction flags all come from the RGS. If the RGS can't be reached it says so and stops; it never falls back to the demo.
-- A round is one `/wallet/play {sessionID, amount, mode}` (`base`, `ante` or `bonus`). Its book events are rebuilt by `Engine.expandSpin` and animated by exactly the same code as a demo spin. `/wallet/end-round` is sent only for a round that is still open, and is retried if it fails. `/wallet/play` is never retried: a lost answer may already have been charged.
+- With `sessionID` and `rgs_url` in the URL the game signs in with `/wallet/authenticate` while it loads. The balance, currency, bet levels, default bet and jurisdiction flags all come from the RGS. If the RGS can't be reached it says so and stops; it never falls back to the demo. The Stake package (below) has no demo at all: opened without a session it says so and stops.
+- A round is one `/wallet/play {sessionID, amount, mode}` (`base`, `ante` or `bonus`). Its book events are rebuilt by `Engine.expandSpin` and checked before they play: every spin must rebuild, and the wins must add up to the final win and the round's payout. They are animated by exactly the same code as a demo spin. `/wallet/end-round` is sent only for a round that is still open, and is retried if it fails. `/wallet/play` is never retried: a lost answer may already have been charged.
+- **Lost answers recover without a reload.** If `/wallet/play`'s answer is lost, the game asks the RGS where things stand (`/wallet/authenticate` again): a round it holds open is played out, at its own bet; otherwise the balance it reports is the true one and the game says so. If `/wallet/end-round`'s answer is lost and the retry is refused, a round the RGS no longer holds open was settled. The game only locks if a round is really still open. `/bet/event` isn't used: every round is in its book, and a resumed round replays from its start.
 - An unfinished round (a closed tab, a dropped connection) is offered first on the next launch. It plays out at its original bet and is then closed.
-- The balance is checked before every round, autoplay and buy, and nothing is sent when it is too low. Saved bets and balances are ignored in Stake play; only settings are kept.
+- The balance is checked before every round, autoplay and buy, and nothing is sent when it is too low. Saved balances are ignored in Stake play; a refresh keeps the bet (the open or last round's, else the one last chosen in that currency).
+- **Regulated markets:** when the RGS asks (`displayNetPosition`, `displayRTP`, `displaySessionTimer`), the session's net position, the mode's RTP and the session time stay on screen (under the board, or in the top corners at 400×225) and in the menu.
 - Jurisdiction flags hide autoplay, turbo, the buy feature, fullscreen, slam-stop and Space to spin, and a minimum round length is honoured.
-- **Replay** (`?replay=true&game=&version=&mode=&event=&amount=`) fetches `/bet/replay/…` and shows the mode, the bet and, for ante and bonus, the real cost. Then it plays the round and offers to play it again. No wallet calls, no balance.
+- **Replay** (`?replay=true&game=&version=&mode=&event=&amount=`) fetches `/bet/replay/…` and shows the mode, the bet and, for ante and bonus, the real cost. Then it plays the round and offers to play it again. No wallet calls, no balance. A link missing a parameter or naming an unknown mode, an event the RGS can't find (`NOT_FOUND`) and a round that doesn't add up each get their own message.
 - **Social casino wording** (`social=true`, an XSC/XGC currency or the RGS's `socialCasino` flag): every visible string comes from `js/strings.js`, which has a neutral or social variant for bet, buy, credit, stake, pay and paytable.
-- **Currencies:** symbol and decimals per currency (USD, EUR, CAD, MXN, JPY with no decimals, SC/GC after the amount, and more). Sub-cent amounts show the digits they need.
+- **Currencies:** every currency on Stake's list with its symbol, side and decimals (JPY, KRW, IDR, VND and CLP with none; SC/GC after the amount, never with "$"), plus a few more. No amount ever shows more decimals than its currency has.
 - **Rules** are built from the published math: RTP per mode, max win, how the cap ends a round, a guide to every control and the standard disclaimer. The odds claims are gone.
 - A **compact layout** for very short windows (Stake checks 400×225), and a splash that fits without scrolling.
-- No service worker, manifest, provably-fair panel, stats or "reset balance" in Stake or replay play.
+- No service worker, manifest, provably-fair panel, stats or "reset balance" in Stake or replay play, and nothing written to the console (`?debug=1` turns diagnostics on).
 
 **Stake math files** (`tools/export-math.js`, output in `math/`)
 - Books are played by this repo's engine, so they are exactly what the demo plays: `index.json`, `lookUpTable_<mode>_0.csv` and `books_<mode>.jsonl.zst` for `base` (cost 1), `ante` (1.25) and `bonus` (100).
@@ -242,6 +255,10 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 | `tools/sim.js` | Multi-threaded RTP simulator |
 | `tools/test.js` | Crypto, determinism, engine invariants, math fingerprint, book events round-trip, offline-cache coverage, sound and string coverage |
 | `tools/render-sfx.js`, `tools/test-sfx.js` | Render the sound sheets from the recipes; check them |
+| `tools/build-stake.js`, `tools/assets.js` | The Stake Engine upload package (`stake/`); the files the game loads |
+| `tools/smoke-stake.js` | The package end to end against two mock RGS processes (Playwright) |
+| `tools/encode-m4a.js` | AAC twins of the music and thunder, for Safari |
+| `STAKE.md`, `stake/` | Uploading to Stake Engine and the approval checklist; the package itself |
 | `tools/draw-scatter.js` | Draws the SCATTER symbol (`assets/symbols/scatter.png`) in headless Chromium; every layer is a parameter at the top |
 | `tools/export-math.js` | Stake Engine math files (books, lookup tables, index) |
 | `tools/mock-rgs.js` | Local stand-in for Stake's RGS, serving the game and the books |

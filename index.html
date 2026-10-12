@@ -6,16 +6,21 @@
 <meta name="theme-color" content="#0b0520" />
 <meta name="description" content="Thunder Hunter Sebastian — a tumbling, pay-anywhere slot drawn on one HTML5 canvas, with stacking thunder multipliers and free spins." />
 <title>Thunder Hunter Sebastian</title>
+<!-- demo-only:start (installable web app; tools/build-stake.js drops this block from the Stake package) -->
 <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-180.png">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- demo-only:end -->
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
 <link rel="preload" href="assets/fonts/cinzel-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/outfit-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css" />
+<script src="js/build.js"></script>
 </head>
 <body>
+  <!-- demo-only:start (the intro clip; not in the Stake package) -->
   <!-- "Only on Stake" preroll: the first thing on screen; the game loads behind it -->
   <div id="preroll">
     <canvas id="prerollBack" width="64" height="36" aria-hidden="true"></canvas>
@@ -26,6 +31,7 @@
     <button id="prerollTap" type="button" hidden>TAP TO START</button>
   </div>
   <script src="js/preroll.js"></script>
+  <!-- demo-only:end -->
 
   <canvas id="game" tabindex="0" data-ta="canvasLabel" aria-label="Thunder Hunter Sebastian slot game. Space to spin, arrow keys change the bet, T toggles turbo, I opens the rules."></canvas>
   <div id="live" class="sr-only" aria-live="polite"></div>
@@ -195,6 +201,7 @@
       <button class="menu-item demo-only" data-open="fair">Provably fair &amp; history</button>
       <button class="menu-item demo-only" data-open="stats">Stats &amp; achievements</button>
       <button class="menu-item" id="menuFull">Fullscreen</button>
+      <div id="sessionFacts" class="facts" hidden aria-live="off"></div>
       <button class="primary" data-close>Close</button>
     </div>
   </div>

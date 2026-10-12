@@ -61,14 +61,21 @@ ok('rounds never exceed the max win', () => {
   const rng = E.makeRng(3);
   for (let i = 0; i < 3000; i++) assert.ok(E.playRound({ rng, buy: true }) <= E.MAX_WIN_X);
 });
-ok('payout math is unchanged (fingerprint of 5,000 spins, recorded from v7)', () => {
+ok('payout math is unchanged (fingerprint of 5,000 spins, recorded from v10.2)', () => {
   const h = crypto.createHash('sha256');
   for (const mode of ['base', 'ante', 'fs']) for (let s = 1; s <= 1500; s++) {
     const o = E.playSpin(E.makeRng(s), mode, { persistent: mode === 'fs' ? s % 7 : 0 });
     h.update(mode + s + o.board.join('') + o.ev.winX.toFixed(6) + o.res.scatters + o.ev.persistentAfter);
   }
   for (let s = 1; s <= 500; s++) { const o = E.playSpin(E.makeRng(s), 'base', { buy: true }); h.update('buy' + s + o.board.join('') + o.ev.winX.toFixed(6)); }
-  assert.strictEqual(h.digest('hex'), '117e516f6c8b6432127463ab2a8ef10cd93a2c5259e3e20407f5f6c59ea5e653');
+  assert.strictEqual(h.digest('hex'), '13e8e19b997598b46bbddfc32f66b25920a0c30481368e38557792122b245df9');
+});
+ok('every pay is a whole number of tenths of the bet (Stake accepts payouts in 0.1x steps)', () => {
+  assert.strictEqual(E.CONFIG.payScale, 1);
+  for (const k in E.SYMBOLS) for (const n in E.SYMBOLS[k].pays) {
+    const v = E.SYMBOLS[k].pays[n] * 10;
+    assert.ok(Math.abs(v - Math.round(v)) < 1e-9 && v >= 1, k + ' ' + n + ': ' + E.SYMBOLS[k].pays[n]);
+  }
 });
 // ---- Stake math export: rounds as book events ----
 // a frozen copy of the v8 playRound, to prove playRoundDetailed draws the same numbers
@@ -157,7 +164,8 @@ ok('social casino wording has none of the restricted words', () => {
   assert.ok(STR.social);
   const src = require('fs').readFileSync(path.join(__dirname, '..', 'js', 'strings.js'), 'utf8');
   const keys = [...src.matchAll(/^\s{4}(\w+):/gm)].map(m => m[1]).concat([...src.matchAll(/,\s(\w+):\s[\['\x27]/g)].map(m => m[1]));
-  const re = new RegExp('\\b(' + STR.RESTRICTED.filter(w => !w.includes(' ')).join('|') + ')\\b|win feature', 'i');
+  // words and phrases alike ("loss limit", "cost of"), as whole words
+  const re = new RegExp('\\b(' + STR.RESTRICTED.map(w => w.replace(/ /g, '\\s+')).join('|') + ')\\b', 'i');
   for (const k of new Set(keys)) {
     const t = STR.T(k, { v: '1.00 SC', a: 1, b: 2, n: 3, x: '5,000×' }).replace(/<[^>]+>/g, '');
     assert.ok(!re.test(t), `social "${k}": ${t}`);
@@ -172,11 +180,17 @@ ok('the published Stake math matches the engine and the rules', () => {
   const cost = { base: 1, ante: E.ANTE_COST, bonus: E.BUY_COST_X };
   const info = (() => { const w = {}; require('vm').runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js', 'math-info.js'), 'utf8'), { window: w }); return w.GOS_MATH; })();
   assert.deepStrictEqual(index.modes.map(m => m.name).sort(), ['ante', 'base', 'bonus']);
+  const summary = JSON.parse(fs.readFileSync(path.join(dir, 'summary.json'), 'utf8'));
   for (const m of index.modes) {
+    // re-weighting to exactly 96.5% stays within 3% of the game's natural odds
+    const k = summary.modes[m.name].reweight;
+    assert.ok(k == null || Math.abs(k - 1) <= 0.03, m.name + ' re-weighting k ' + k);
     assert.strictEqual(m.cost, cost[m.name], m.name + ' cost');
     let W = 0n, P = 0n, max = 0;
     for (const line of fs.readFileSync(path.join(dir, m.weights), 'utf8').trim().split('\n')) {
       const [, w, pm] = line.split(',').map(BigInt); W += w; P += w * pm; if (Number(pm) > max) max = Number(pm);
+      // Stake's math verification: whole 0.1x steps, nothing below 0.1x but 0
+      assert.ok(pm % 10n === 0n && (pm === 0n || pm >= 10n), m.name + ' payout ' + pm + ' is not a whole 0.1x step');
     }
     const rtp = Number((P * 100000000n) / (W * BigInt(Math.round(m.cost * 100)))) / 1e6;     // percent
     assert.ok(Math.abs(rtp - 96.5) < 0.001, m.name + ' RTP ' + rtp);
@@ -197,13 +211,10 @@ ok('every asset the game loads exists and is precached by the service worker', (
   const sw = read('sw.js');
   const core = [...sw.match(/const CORE = \[([\s\S]*?)\];/)[1].matchAll(/'([^']+)'/g)].map(m => m[1]);
   for (const f of core) if (f !== './') assert.ok(fs.existsSync(path.join(root, f)), 'precached file missing on disk: ' + f);
-  const html = read('index.html');
-  const refs = [...html.matchAll(/(?:src|href)="([^"#:]+)"/g)].map(m => m[1]);
-  const css = [...read('css/style.css').matchAll(/url\(\.\.\/([^)]+)\)/g)].map(m => m[1]);
-  const symbols = [...read('js/board.js').matchAll(/'(assets\/[^']+\.(?:png|webp))'/g)].map(m => m[1]);
-  const sounds = [...read('js/audio.js').matchAll(/'(sounds\/[^']+)'/g)].map(m => m[1]).filter(f => !f.startsWith('sounds/music'));   // the music tracks (3.5 MB) are cached on first play instead
+  const r = require('./assets.js').refs(root);         // the same reader tools/build-stake.js packages from
+  const sounds = r.sounds.filter(f => !f.startsWith('sounds/music'));   // the music tracks (3.5 MB, ogg or m4a) are cached on first play instead
   const manifest = JSON.parse(read('manifest.json')).icons.map(i => i.src);
-  for (const f of [...refs, ...css, ...symbols, ...sounds, ...manifest, 'manifest.json']) {
+  for (const f of [...r.html, ...r.css, ...r.images, ...sounds, ...manifest, 'manifest.json']) {
     assert.ok(fs.existsSync(path.join(root, f)), 'referenced file missing: ' + f);
     if (/\.(mp4|webm)$/.test(f)) continue;    // video is streamed from the network, never cached
     assert.ok(core.includes(f), 'not precached by sw.js: ' + f);
@@ -248,7 +259,10 @@ ok('amounts never show more decimals than the currency has (no $3.025)', () => {
   const G = {};
   vm.runInNewContext(money, { G });
   const want = [['USD', 3.025, '$3.03'], ['USD', 16.125, '$16.13'], ['USD', 2.1875, '$2.19'], ['USD', 0.005, '$0.01'], ['USD', 0.004, '$0.00'],
-    ['USD', 1234567.891, '$1,234,567.89'], ['USD', -3.025, '-$3.03'], ['USD', 100, '$100.00'], ['JPY', 3.5, '¥4'], ['XSC', 2.1875, '2.19 SC'], ['EUR', 0.125, '€0.13']];
+    ['USD', 1234567.891, '$1,234,567.89'], ['USD', -3.025, '-$3.03'], ['USD', 100, '$100.00'], ['JPY', 3.5, '¥4'], ['XSC', 2.1875, '2.19 SC'], ['EUR', 0.125, '€0.13'],
+    // Stake's currency table: symbol, side and decimals
+    ['RUB', 10, '₽10.00'], ['DKK', 10, '10.00 KR'], ['NOK', 10, 'kr10.00'], ['ILS', 10, '10.00 ILS'], ['TWD', 10, 'NT$10.00'],
+    ['NGN', 10, '₦10.00'], ['CLP', 10.4, '10 CLP'], ['VND', 10, '10 ₫'], ['XGC', 10, '10.00 GC'], ['BHD', 1, 'BD1.00'], ['PLN', 1, '1.00 zł']];
   for (const [c, n, s] of want) { G.setCurrency(c); assert.strictEqual(G.money(n), s, c + ' ' + n); }
   G.setCurrency('USD');
   assert.strictEqual(G.countMoney(16.125, 16.125), '$16.13');
@@ -272,5 +286,51 @@ ok('the service worker is v10 and clears only older v10 caches (every version sh
   let done; on.activate({ waitUntil: p => { done = p; } });
   await done;
   assert.deepStrictEqual(deleted.sort(), ['gos10-core-1', 'gos10-core-2', 'gos10-media', 'gos10-media-2'].filter(k => k !== version && k !== media).sort());
+});
+ok('the game writes nothing to the console (Stake play logs nothing; ?debug=1 routes through G.log)', () => {
+  const fs = require('fs'), dir = path.join(__dirname, '..', 'js');
+  const found = [];
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.js'))) {
+    fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((l, i) => {
+      if (/\bconsole\.(log|warn|error|info|debug|trace)\s*\(/.test(l) && !/G\.log = /.test(l)) found.push(`${f}:${i + 1}`);
+    });
+  }
+  assert.deepStrictEqual(found, []);
+});
+ok('the Stake package is exactly what tools/build-stake.js makes from this repo', () => {
+  const fs = require('fs'), vm = require('vm'), root = path.join(__dirname, '..'), pkg = path.join(root, 'stake');
+  if (!fs.existsSync(path.join(pkg, 'frontend', 'index.html'))) { console.log('      (no stake/ package; skipped)'); return; }
+  const B = require('./build-stake.js'), fe = B.frontendFiles(root);
+  const walk = (d, base = d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name), base) : [path.relative(base, path.join(d, e.name)).split(path.sep).join('/')]);
+  const front = path.join(pkg, 'frontend'), files = walk(front).sort();
+  // exactly the files the game loads (plus the licences), and none of the forbidden ones
+  assert.deepStrictEqual(files, [...fe.files, 'index.html', 'css/style.css', 'js/build.js'].sort());
+  for (const f of files) assert.ok(!B.FORBIDDEN.some(re => re.test(f)), 'forbidden in the package: ' + f);
+  // the page and stylesheet without their demo-only blocks; everything else byte-identical to the repo
+  assert.strictEqual(fs.readFileSync(path.join(front, 'index.html'), 'utf8'), fe.html);
+  assert.strictEqual(fs.readFileSync(path.join(front, 'css/style.css'), 'utf8'), fe.css);
+  for (const f of fe.files) assert.ok(fs.readFileSync(path.join(front, f)).equals(fs.readFileSync(path.join(root, f))), 'stale copy in the package: ' + f);
+  // the build flag: target stake, tied to these books
+  const ctx = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(front, 'js/build.js'), 'utf8'), ctx);
+  assert.strictEqual(ctx.window.GOS_BUILD.target, 'stake');
+  assert.strictEqual(ctx.window.GOS_BUILD.mathHash, B.mathHash(path.join(root, 'math')));
+  assert.strictEqual(B.mathHash(path.join(pkg, 'math')), B.mathHash(path.join(root, 'math')));
+  // the math: index.json and the six files it names, byte-equal to math/
+  assert.deepStrictEqual(walk(path.join(pkg, 'math')).sort(), B.mathFiles(path.join(root, 'math')).slice().sort());
+  for (const f of B.mathFiles(path.join(root, 'math'))) assert.ok(fs.readFileSync(path.join(pkg, 'math', f)).equals(fs.readFileSync(path.join(root, 'math', f))), 'stale math file: ' + f);
+  // every replay case names a real book with the payout it states
+  const ev = JSON.parse(fs.readFileSync(path.join(pkg, 'replay-events.json'), 'utf8'));
+  const index = JSON.parse(fs.readFileSync(path.join(root, 'math', 'index.json'), 'utf8'));
+  for (const m of index.modes) {
+    const rows = fs.readFileSync(path.join(root, 'math', m.weights), 'utf8').trim().split('\n').map(l => l.split(',').map(Number));
+    for (const k of ['loss', 'normalWin', 'bigWin', 'bonusTrigger', 'winCap']) {
+      const e = ev[m.name][k];
+      assert.ok(e && rows[e.event - 1], `${m.name} ${k}`);
+      assert.strictEqual(rows[e.event - 1][2] / 100, e.payoutMultiplier, `${m.name} ${k} payout`);
+    }
+  }
+  // no Stake branding anywhere in the package's text files
+  for (const f of files.filter(f => /\.(html|css|js|json|txt)$/.test(f))) assert.ok(!/only on stake|preroll/i.test(fs.readFileSync(path.join(front, f), 'utf8')), 'branding left in ' + f);
 });
 Promise.all(pending).then(() => console.log(`\n${n} checks passed`), e => { console.error(e); process.exit(1); });

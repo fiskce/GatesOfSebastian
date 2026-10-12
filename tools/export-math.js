@@ -43,6 +43,8 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const zlib = require('zlib');
+// the books are zstd-compressed with Node's own zstd (zlib.zstdCompressSync): Node 22.15+ / 23.8+
+if (typeof zlib.zstdCompressSync !== 'function') { console.error('export-math needs Node 22.15+ (zlib zstd); this is ' + process.version); process.exit(1); }
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const E = require(path.join(__dirname, '..', 'js', 'engine.js'));
 
@@ -175,6 +177,7 @@ function weigh(mode, buckets, probs) {
   for (const b of books) { if (adjustable(b)) { aw += b.weight; ap += b.weight * b.pm; } else { rw += b.weight; rp += b.weight * b.pm; } }
   const k = (rp - target * rw) / (target * aw - ap);
   if (!(k > 0) || !isFinite(k)) throw new Error(`${mode}: cannot reach ${TARGET_RTP * 100}% by re-weighting (k=${k})`);
+  if (Math.abs(k - 1) > 0.03) console.warn(`  warning: ${mode} re-weighting k=${k.toFixed(4)} is more than 3% from natural (re-tune CONFIG, or export with a larger --scale)`);
   for (const b of books) { if (adjustable(b)) b.weight *= k; b.weight = Math.max(1, Math.round(b.weight)); }
   return { books, k };
 }
@@ -211,10 +214,13 @@ function verify(mode, expected) {
   const csv = fs.readFileSync(path.join(OUT, `lookUpTable_${mode}_0.csv`), 'utf8').trim().split('\n').map(l => l.split(',').map(Number));
   const lines = zlib.zstdDecompressSync(fs.readFileSync(path.join(OUT, `books_${mode}.jsonl.zst`))).toString().trim().split('\n');
   if (csv.length !== lines.length) throw new Error(mode + ': CSV and books differ in length');
-  let maxPm = 0;
+  let maxPm = 0, totalW = 0n;
   lines.forEach((line, i) => {
     const b = JSON.parse(line), [id, w, pm] = csv[i];
     if (b.id !== i + 1 || id !== b.id || pm !== b.payoutMultiplier || !(w >= 1) || !Number.isSafeInteger(w)) throw new Error(`${mode}: book ${i + 1} does not match its CSV row`);
+    // Stake's math verification: payouts in whole 0.1x steps (multiples of 10), and none below 0.1x but 0
+    if (!Number.isSafeInteger(pm) || pm % 10 !== 0 || (pm !== 0 && pm < 10)) throw new Error(`${mode}: book ${b.id} pays ${pm}, not a whole 0.1x step`);
+    totalW += BigInt(w);
     if (Math.round((b.baseGameWins + b.freeGameWins) * 100) !== pm) throw new Error(`${mode}: book ${b.id} wins do not add up`);
     let persistent = 0, sum = 0;
     b.events.forEach((e, k) => {
@@ -230,6 +236,7 @@ function verify(mode, expected) {
     if (pm > maxPm) maxPm = pm;
   });
   if (maxPm !== MAX_X100) throw new Error(`${mode}: no book reaches the max win`);
+  if (totalW >= 2n ** 64n) throw new Error(`${mode}: the weights add up to more than a uint64`);
   const st = stats(mode, csv.map(([, w, pm]) => ({ weight: w, pm })));
   if (Math.abs(st.rtp - expected.rtp) > 1e-9 || Math.abs(st.rtp - TARGET_RTP * 100) > 0.001) throw new Error(`${mode}: RTP read back as ${st.rtp}`);
   return lines.length;
