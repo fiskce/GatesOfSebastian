@@ -165,6 +165,8 @@ window.GOS = (() => {
     quality: 'auto', tilt: false, haptics: touch, dynMusic: true };
   G.baseBet = () => G.BET_STEPS[G.S.betIndex];
   G.spinCost = () => G.baseBet() * (G.S.ante ? E.ANTE_COST : 1);
+  // what BET shows: what a spin costs (Double Chance's 25% included while it is on); the RGS still gets the level
+  G.betShown = () => G.spinCost();
   G.buyCost = () => G.baseBet() * E.BUY_COST_X;
 
   // ---------------- persistence (best effort) ----------------

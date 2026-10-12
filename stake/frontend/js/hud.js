@@ -252,7 +252,7 @@
     const fb = P ? Math.min(bt.h * 0.2, bt.w * 0.085) : Math.min(bt.h * 0.11, bt.w * 0.1);
     if (G.mode === 'replay') {      // a replay shows its bet and nothing to change
       G.text(ctx, T('replay'), bt.x + bt.w / 2, bt.y + bt.h * 0.3, floor(fb * 1.1), TXT, { weight: 800, maxW: bt.w * 0.9 });
-      G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), bt.x + bt.w / 2, bt.y + bt.h * 0.62, floor(fb * 1.05), TXT, { weight: 800, maxW: bt.w * 0.9 });
+      G.text(ctx, T('bet') + ' ' + betValue(), bt.x + bt.w / 2, bt.y + bt.h * 0.62, floor(fb * 1.05), TXT, { weight: 800, maxW: bt.w * 0.9 });
       return;
     }
     // the bet itself lives in the console's BET readout; this plate is the Double Chance module
@@ -276,7 +276,7 @@
     const kx = tx + th / 2 + G.clamp(k, 0, 1) * (tw - th);
     plate(ctx, { x: kx - th / 2 + 2, y: ty + 2, w: th - 4, h: th - 4 }, 0, 'knob', 'rest');
     ctx.restore();
-    // BET always shows the bet level; Double Chance's extra cost is shown here, on its own
+    // BET shows the total while Double Chance is on; the module says what it adds
     const plus = S.ante ? T('antePlus') + ' · ' + G.money(G.spinCost()) : T('antePlus');
     if (!P) G.text(ctx, plus, bt.x + bt.w / 2, Math.min(ty + th + fb * 1.1, bt.y + bt.h - fb * 0.7), floor(fb * 0.66), S.ante ? EMERALD : TXT2, { weight: 700, maxW: bt.w * 0.92 });
     else if (S.ante) G.text(ctx, plus, bt.x + bt.w / 2, Math.min(ty + th + fb * 0.75, bt.y + bt.h - fb * 0.5), floor(fb * 0.6), EMERALD, { weight: 700, maxW: bt.w * 0.92 });
@@ -394,19 +394,28 @@
     return o.c;
   }
   // a recessed readout: label on top, the value under it in fixed-advance digits
-  function readout(ctx, r, label, value, color, size, align, press) {
+  function readout(ctx, r, label, value, color, size, align, press, vscale) {
     let a = null;
     if (press) a = G.button(press.id, r.x, r.y, r.w, r.h, press.fn, { disabled: press.disabled, label: press.label, reason: press.reason });
     plate(ctx, r, Math.min(8, r.h * 0.2), 'well', 'rest');
     const ax = align === 'left' ? r.x + size * 0.7 : align === 'right' ? r.x + r.w - size * 0.7 : r.x + r.w / 2;
     G.text(ctx, label, ax, r.y + r.h * 0.3, floor(size * 0.62), a && a.h > 0.3 ? TXT : TXT2, { weight: 700, align, maxW: r.w - size * 1.6 });
-    G.text(ctx, value, ax, r.y + r.h * 0.68, size, color, { weight: 800, align, maxW: r.w - size * 1.6, tabular: true, min: floor(size * 0.85) });
+    G.text(ctx, value, ax, r.y + r.h * 0.68, size * (vscale || 1), color, { weight: 800, align, maxW: r.w - size * 1.6, tabular: true, min: floor(size * 0.85) });
     if (a && !press.disabled) {     // a small chevron says it opens something
       const cx = r.x + r.w - size * 0.75, cy = r.y + r.h * 0.5, k = size * 0.22;
       ctx.save(); ctx.strokeStyle = a.h > 0.3 ? TXT : TXT2; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.beginPath(); ctx.moveTo(cx - k, cy - k * 0.5); ctx.lineTo(cx, cy + k * 0.5); ctx.lineTo(cx + k, cy - k * 0.5); ctx.stroke(); ctx.restore();
     }
   }
+  // BET is what a spin costs: the bet level, plus Double Chance's 25% (in its emerald) while that is on
+  const betLabel = () => S.ante ? T('betAnte') : T('bet');
+  const betValue = () => G.money(G.betShown());
+  const betColor = () => S.ante ? EMERALD : TXT;
+  // the value swells for a moment when Double Chance flips, so the change is seen
+  const betPulse = () => {
+    const t = G.clock.real - (H.betPulseT == null ? -9 : H.betPulseT);
+    return t >= 0 && t < 0.35 && !G.settings.reducedMotion ? 1 + 0.12 * Math.sin(Math.PI * t / 0.35) : 1;
+  };
   // the BET readout opens every bet level
   const betPress = () => {
     const why = S.inFS ? 'reasonFS' : S.auto > 0 ? 'reasonAuto' : S.busy ? 'reasonRound' : null;
@@ -593,11 +602,11 @@
   function stackedReadout(ctx, r, size, press) {
     plate(ctx, r, Math.min(8, r.h * 0.2), 'well', 'rest');
     const sv = floor(size * 0.8), sl = floor(size * 0.6), lx = r.x + size * 0.55, vx = r.x + r.w - size * 0.55;
-    const rows = [G.allow('balance') && [T('balance'), balance(), r.y + r.h * 0.3], [T('bet'), G.money(G.baseBet()), r.y + r.h * (G.allow('balance') ? 0.72 : 0.5)]].filter(Boolean);
-    rows.forEach(([lab, val, y]) => {
+    const rows = [G.allow('balance') && [T('balance'), balance(), r.y + r.h * 0.3, TXT, 1], [betLabel(), betValue(), r.y + r.h * (G.allow('balance') ? 0.72 : 0.5), betColor(), betPulse()]].filter(Boolean);
+    rows.forEach(([lab, val, y, col, k]) => {
       ctx.font = G.font(sl, 700); const lw = ctx.measureText(lab).width;
       G.text(ctx, lab, lx, y, sl, TXT2, { weight: 700, align: 'left' });
-      G.text(ctx, val, vx, y, sv, TXT, { weight: 800, align: 'right', tabular: true, maxW: r.w - lw - size * 1.5, min: sv });
+      G.text(ctx, val, vx, y, sv * k, col, { weight: 800, align: 'right', tabular: true, maxW: r.w - lw - size * 1.5, min: sv });
     });
     if (press) G.button(press.id, r.x, r.y + r.h * 0.5, r.w, r.h * 0.5, press.fn, { disabled: press.disabled, label: press.label, reason: press.reason });
   }
@@ -650,7 +659,7 @@
       const k = Math.min(1, avail / full);
       if (hasBal) { readout(ctx, { x: mx, y: ry, w: wBal * k, h: rh }, T('balance'), balance(), TXT, fsz, 'left'); mx += wBal * k + gap; }
       readout(ctx, { x: mx, y: ry, w: wWin * k, h: rh }, T('win'), winText(), winLive() ? '#ffd36b' : TXT2, fsz, 'left'); mx += wWin * k + gap;
-      readout(ctx, { x: mx, y: ry, w: wBet * k, h: rh }, T('bet'), G.money(G.baseBet()), TXT, fsz, 'left', betPress()); mx += wBet * k + gap;
+      readout(ctx, { x: mx, y: ry, w: wBet * k, h: rh }, betLabel(), betValue(), betColor(), fsz, 'left', betPress(), betPulse()); mx += wBet * k + gap;
     } else {                    // too narrow for three: BALANCE over BET, and WIN beside them
       const wS = Math.max(wBal, wBet) * 0.95, k = Math.min(1, avail / (wS + gap + wWin));
       stackedReadout(ctx, { x: mx, y: ry, w: wS * k, h: rh }, fsz, betPress()); mx += wS * k + gap;
@@ -673,7 +682,7 @@
     let mx = pad;
     if (G.allow('balance')) { readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('balance'), balance(), TXT, fsz, 'center'); mx += cw + gap; }
     readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('win'), winText(), winLive() ? '#ffd36b' : TXT2, fsz, 'center'); mx += cw + gap;
-    readout(ctx, { x: mx, y: ry, w: cw, h: rh }, T('bet'), G.money(G.baseBet()), TXT, fsz, 'center', betPress());
+    readout(ctx, { x: mx, y: ry, w: cw, h: rh }, betLabel(), betValue(), betColor(), fsz, 'center', betPress(), betPulse());
     const row2 = bb.y + bb.h * 0.68;
     const R = G.clamp(Math.min(bb.h * 0.32, W * 0.12), 30, 54), r = R * 0.52;
     const isz = G.clamp(r * 0.95, 16, 26), step = Math.max(isz * 1.7, G.coarse ? 44 : 0);
@@ -721,7 +730,7 @@
     if (G.allow('balance')) G.text(ctx, T('balance') + ' ' + balance(), left, vy1, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true, min: 8 });
     const bp = betPress(), byy = G.allow('balance') ? vy2 : cy;
     if (bp) G.button(bp.id, left, byy - fsz * 0.8, colW, fsz * 1.6, bp.fn, { disabled: bp.disabled, label: bp.label, reason: bp.reason });
-    G.text(ctx, T('bet') + ' ' + G.money(G.baseBet()), left, byy, fsz, TXT, { weight: 800, align: 'left', maxW: colW, tabular: true, min: 8 });
+    G.text(ctx, T('bet') + ' ' + betValue(), left, byy, fsz * betPulse(), betColor(), { weight: 800, align: 'left', maxW: colW, tabular: true, min: 8 });
     const mx = left + colW + 6, laneW = rx - mx - 6;
     const fresh = freshMessage();
     let fits = false;

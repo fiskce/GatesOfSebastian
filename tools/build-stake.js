@@ -3,7 +3,7 @@
  *
  *   node tools/build-stake.js                  # writes stake/ and copies it to the game host repo
  *   node tools/build-stake.js --no-host        # stake/ only
- *   node tools/build-stake.js --out <dir> --version 10.2 --host <dir>
+ *   node tools/build-stake.js --out <dir> --version 10.3 --host <dir>
  *
  * stake/
  *   frontend/            upload this folder on the game's Files page (index.html at its root)
@@ -25,7 +25,7 @@ const crypto = require('crypto');
 const { refs, all } = require('./assets.js');
 
 const ROOT = path.join(__dirname, '..');
-const VERSION = '10.2';
+const VERSION = '10.3';
 const MAX_X100 = 500000;
 // never in the Stake package
 const FORBIDDEN = [/^sw\.js$/, /^manifest\.json$/, /^assets\/icons\/(icon-|apple-touch)/, /^assets\/video\//, /^js\/preroll\.js$/,

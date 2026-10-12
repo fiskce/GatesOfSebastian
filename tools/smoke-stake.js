@@ -4,7 +4,7 @@
  *   node tools/build-stake.js && node tools/smoke-stake.js            (needs Playwright's Chromium)
  *   node tools/smoke-stake.js --shots <dir>                            also saves screenshots
  *   node tools/smoke-stake.js --only recovery,social                   just those parts
- *     (sizes, session, replays, flags, recovery, social)
+ *     (sizes, ante, session, replays, flags, recovery, social)
  *
  * Two mock RGS processes (tools/mock-rgs.js): one only serves stake/frontend (the "CDN"), the other is
  * the RGS on a different origin, playing stake/math. Input is real (trusted) clicks and key presses.
@@ -12,6 +12,8 @@
  * mobile 425x812, 375x667, 320x568):
  *   - no intro clip, no service worker, no manifest; authenticate -> play -> end-round, balance right
  *   - requests go only to files of the package or to the RGS's API; nothing at all on the console
+ * Double Chance (1200x675, 425x812, 400x225): BET and the bet grid show what a spin costs (level x 1.25)
+ * while /wallet/play still sends the level with mode ante, and the balance drops by the cost;
  * and once: no session -> a blocking error and no wallet calls; every replay case in
  * replay-events.json plays its exact payout (and a broken/unknown/missing replay says so); the
  * regulated-market flags show net position, RTP and session time; a dropped /wallet/play (win and
@@ -130,6 +132,38 @@ const balanceOf = async id => (await post('/wallet/balance', { sessionID: id, ha
       check(`${vp.join('x')}: authenticate -> play -> end-round, balance right`, calls.join() === '/wallet/authenticate,/wallet/play,/wallet/end-round' && st.micro === before - st0.bet + win && !st.locked, `${calls.join()} ${st.micro} vs ${before - st0.bet + win}`);
       const s = stray(rec);
       check(`${vp.join('x')}: only package files and the RGS API, nothing on the console`, !s.length && !rec.bad.length && !rec.console.length, [...s, ...rec.bad, ...rec.console].slice(0, 4).join(' | '));
+      await ctx.close();
+    }
+
+    // ---- Double Chance: BET shows what a spin costs; the RGS still gets the level
+    if (part('ante')) for (const vp of [[1200, 675], [425, 812], [400, 225]]) {
+      const id = 'ante' + vp.join('x');
+      await session(id, { force: { ante: EV.ante.loss.event } });
+      const before = await balanceOf(id);
+      const { ctx, page, rec } = await open(browser, stakeUrl(id), vp, { touch: vp[0] < vp[1] });
+      await play(page);
+      const bet = await page.evaluate(() => GOS.betMicro()), usd = m => '$' + (m / 1e6).toFixed(2);
+      const level = usd(bet), total = usd(Math.round(bet * 1.25));
+      const bar = t => t.has(total) || t.has('BET ' + total);       // the readout (or the compact bar's "BET $x")
+      await page.evaluate(() => { window.__texts.clear(); GOS.Game.toggleAnte(); });
+      await sleep(700);
+      const on = await page.evaluate(() => ({ texts: [...window.__texts], msg: GOS.S.message, ante: GOS.S.ante }));
+      if (shots) await page.screenshot({ path: path.join(shots, `ante_${vp.join('x')}.png`) });
+      check(`${vp.join('x')}: Double Chance on, BET shows ${total} (the ${level} level x 1.25) and so does the message`, on.ante && bar(new Set(on.texts)) && on.msg.includes(total), on.msg + ' | ' + on.texts.filter(t => /\$/.test(t)).slice(-6).join(' | '));
+      await page.evaluate(() => GOS.UI.open('bets'));
+      const grid = await page.evaluate(() => ({ pressed: (document.querySelector('#betGrid [aria-pressed="true"]') || {}).textContent, n: document.querySelectorAll('#betGrid button').length, levels: GOS.BET_STEPS.length, note: document.getElementById('betsNote').textContent }));
+      await page.evaluate(() => GOS.UI.closeAll(true));
+      check(`${vp.join('x')}: the bet grid shows every level at its Double Chance cost`, grid.pressed === total && grid.n === grid.levels && /25%/.test(grid.note), JSON.stringify(grid));
+      await page.keyboard.press('Space');
+      await page.waitForFunction(() => GOS.S.busy, null, { timeout: 5000 }).catch(() => {});
+      await idle(page);
+      const plays = (await (await fetch(RGS + '/mock/log')).json()).filter(l => l.path === '/wallet/play' && l.body && l.body.sessionID === id);
+      const after = await balanceOf(id), micro = await page.evaluate(() => GOS.RGS.balanceMicro);
+      check(`${vp.join('x')}: the play sends the level with mode ante; the balance drops by ${total}`, plays.length === 1 && plays[0].body.amount === bet && plays[0].body.mode === 'ante' && after === before - Math.round(bet * 1.25) && micro === after, JSON.stringify(plays.map(l => l.body)) + ` ${before} -> ${after}`);
+      await page.evaluate(() => { window.__texts.clear(); GOS.Game.toggleAnte(); });
+      await sleep(700);
+      const off = await page.evaluate(() => ({ texts: [...window.__texts], ante: GOS.S.ante }));
+      check(`${vp.join('x')}: Double Chance off, BET is back to ${level}`, !off.ante && (off.texts.includes(level) || off.texts.includes('BET ' + level)) && !rec.console.length, rec.console.slice(0, 2).join(' | '));
       await ctx.close();
     }
 

@@ -1,6 +1,6 @@
 {
   "game": "Thunder Hunter Sebastian",
-  "version": "10.2",
+  "version": "10.3",
   "mathHash": "684d406e5d36",
   "frontend": {
     "assets/fonts/cinzel-latin-700-normal.woff2": {
@@ -105,11 +105,11 @@
     },
     "js/build.js": {
       "bytes": 198,
-      "sha256": "35cd7382583e979a76326c2dc53e4a3282ffdf0c8c5b88fc8225c2a8ac7a2e21"
+      "sha256": "3f7853be25ce9598aa18ee7e763e1152ed9f98c6f978eb75ec884ca216802499"
     },
     "js/core.js": {
-      "bytes": 24509,
-      "sha256": "d22c50f997eee67d7617d10ba0ae1012d3ddd3d401771e387060ceec0344ecae"
+      "bytes": 24659,
+      "sha256": "5671f6dde1c3db53f90fa2ae8f1b396f813df423339a54353fc518964cc66404"
     },
     "js/engine.js": {
       "bytes": 16566,
@@ -124,12 +124,12 @@
       "sha256": "886b29656a2b72ec0087a4ddf9ff05988eff5470a28515d844199ede7f9d241d"
     },
     "js/game.js": {
-      "bytes": 51012,
-      "sha256": "02dbf3d6160519ff2e78b5a4a2fef677a9475e0e9d820a734594d56da4e81266"
+      "bytes": 51127,
+      "sha256": "1e6a1dcc3c297edb766e0fe69cd7fe45587eaea9037b712b99b0b4d68735a6e4"
     },
     "js/hud.js": {
-      "bytes": 53982,
-      "sha256": "44147a94d53ceac1664673954a7f4b3947318533869fdb3e2740f229693b0a6d"
+      "bytes": 54608,
+      "sha256": "4802958e465cbd32f5aaa92c87c3e53b416876bf0a5002ea9cb8723807b54e3f"
     },
     "js/materials.js": {
       "bytes": 14027,
@@ -172,16 +172,16 @@
       "sha256": "83ee251ed6ffdc33d9786e48273faabe9824631661856c9dbb3a765a36328de1"
     },
     "js/strings.js": {
-      "bytes": 9448,
-      "sha256": "20f8a80a3efb2159713e751ec869ea235321cc2cdc7ac41329123978e1732e64"
+      "bytes": 9540,
+      "sha256": "a8819d907d1ed6c6fa164f2659cf2da9563a770c81533e40ece5a7e2d38ce177"
     },
     "js/symbols.js": {
       "bytes": 8677,
       "sha256": "7669da74fbb2eda50e619ced311140e4d48295f5c92078ed815e4170263fffa7"
     },
     "js/ui.js": {
-      "bytes": 22907,
-      "sha256": "87bbfa711e138bfae674cd18de89303c2bbda62a74ba81ebb2b444153744e69a"
+      "bytes": 23094,
+      "sha256": "2db52981aacbb529e169d8b08f083721e664797e1210cc2d75ab13ccc278b046"
     },
     "LICENSE": {
       "bytes": 35149,

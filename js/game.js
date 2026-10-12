@@ -599,7 +599,8 @@
   Game.toggleAnte = () => {
     if (S.busy || S.inFS || !G.allow('ante')) return;
     S.ante = !S.ante; G.save();
-    say(S.ante ? T('msgAnteOn') : T('msgAnteOff'));
+    H.betPulseT = G.clock.real;        // BET swells as it takes on (or drops) the 25%
+    say(T(S.ante ? 'msgAnteOn' : 'msgAnteOff', { v: G.money(G.betShown()) }));
   };
   Game.bet = d => Game.setBet(S.betIndex + d);
   Game.setBet = i => {
@@ -610,7 +611,7 @@
     // Stake play remembers the chosen bet per currency, so a refresh keeps it [187]
     if (G.mode === 'rgs') G.settings.lastBet = Object.assign({}, G.settings.lastBet, { [G.currency]: G.betMicro() });
     G.save();
-    say(T('msgBet', { v: G.money(G.baseBet()) }));
+    say(T('msgBet', { v: G.money(G.betShown()) }));
     return true;
   };
   Game.toggleTurbo = () => {

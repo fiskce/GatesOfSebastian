@@ -1,6 +1,6 @@
 # Thunder Hunter Sebastian on Stake Engine
 
-How to rebuild, upload and submit the game, and how it meets Stake's approval checklist. Version **10.2**.
+How to rebuild, upload and submit the game, and how it meets Stake's approval checklist. Version **10.3**.
 
 ## What to upload
 
@@ -90,7 +90,7 @@ How the game meets the items of Stake's checklist (docs: approval).
 | [190] Unique title | "Thunder Hunter Sebastian" |
 | [12] No offensive assets | A cartoon storm hunter, his fox, gems and lightning |
 | [48]–[52] Math | 96.50% in every mode (90–98% and within 0.5% of base); max win reachable (odds above); hit rate about 1 in 4 |
-| [59] [63] [191] Bet levels | Only the RGS's `betLevels` (or min/max/step), its default first; the bet shown is the level, Double Chance's extra cost is shown on its own |
+| [59] [63] [191] Bet levels | Only the RGS's `betLevels` (or min/max/step), its default first. With Double Chance on, BET and the level grid show what a spin costs (the level × 1.25, in the currency's decimals); `/wallet/play` still sends the level with mode `ante` |
 | [187] Refresh keeps the bet | The open or last round's bet, else the last one chosen in that currency |
 | [66] Uses `rgs_url` | Every call goes to `rgs_url`; nothing is hard-coded |
 | [24]–[29] Rules | Every symbol's wins, the RTP and max win of each mode, how wins form, each mode's description and cost, free spins and retriggers, the multiplier orbs |

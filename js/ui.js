@@ -233,7 +233,9 @@
     $('autoLoss').value = String(c.loss); $('autoWin').value = String(c.win); $('autoFeature').checked = !!c.feature;
   }
   function renderBets() {
-    $('betGrid').innerHTML = G.BET_STEPS.map((v, i) => `<button type="button" data-i="${i}" aria-pressed="${i === S.betIndex}">${G.money(v)}</button>`).join('');
+    // each level as BET will show it: with Double Chance on, what a spin at that level costs
+    const k = S.ante ? E.ANTE_COST : 1;
+    $('betGrid').innerHTML = G.BET_STEPS.map((v, i) => `<button type="button" data-i="${i}" aria-pressed="${i === S.betIndex}">${G.money(v * k)}</button>`).join('');
     $('betsNote').textContent = S.ante ? T('betsNote') : '';
   }
 
@@ -259,7 +261,7 @@
       [w('Spin', 'Spin') + ' (Space / Enter)', G.allow('slam') ? 'Starts a round. Press again, or tap the board, to hurry the spin along; it also skips win animations.' : 'Starts a round. It also skips win animations.'],
       G.allow('bet') && ['− / + (↓ / ↑)', `Lower or raise the ${bet}; hold to keep stepping.`],
       G.allow('bet') && [w('BET', 'PLAY') + ' (in the bar)', `Tap it to pick from every ${bet} level.`],
-      G.allow('ante') && [w('Double chance', 'Double chance'), `${costs} 1.25× the ${bet} for each spin and free spins trigger more often. Wins are still multiples of the ${bet}.`],
+      G.allow('ante') && [w('Double chance', 'Double chance'), `Adds 25% to the ${bet} on every spin (${w('BET', 'PLAY')} shows the total) and free spins trigger more often. Wins are still multiples of the ${bet} before the 25%.`],
       G.allow('buy') && [w('Buy free spins', 'Get free spins') + ' (B)', `Starts 15 free spins straight away for ${cost('bonus')}× the ${bet}. Double chance must be off.`],
       G.allow('auto') && ['Autoplay (A)', `Plays 10, 25, 50, 100 or unlimited rounds in a row, with optional stops: when the balance drops by a set amount, on a big single win, or when free spins start. Press it again, or press Spin, to stop. It also stops when the balance is too low.`],
       G.allow('turbo') && ['Turbo (T)', 'Faster animations. The outcome is the same.'],

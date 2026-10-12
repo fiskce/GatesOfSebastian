@@ -23,6 +23,10 @@ Opening `index.html` straight from disk also works, but the browser then blocks 
 
 **Controls:** Space or Enter spins (and presses PLAY on the splash). Press Space again, or tap the board, to hurry a spin. ↑/↓ change the bet (hold − / + to keep stepping; tap BET to pick any level), T toggles turbo, B buys free spins, A opens autoplay, M mutes and I opens the rules. Taps skip win celebrations. A control that can't be used right now is unlit and says why when pressed. The rules list every control.
 
+## What's new in v10.3: BET shows the Double Chance total
+
+Turning Double Chance on now shows what a spin costs right in BET: $1.00 becomes **$1.25**, in Double Chance's emerald, with "BET +25%" over it and a short swell as it changes (none with reduced motion). The bet grid shows every level the same way while it is on, and the toast says the new amount. The RGS still gets the bet level with mode `ante`, and wins are still multiples of the level. Amounts keep the currency's decimals: a $1.50 level with Double Chance reads $1.88.
+
 ## What's new in v10.2: ready for Stake Engine
 
 v10.2 makes the game ready to upload to Stake Engine: `node tools/build-stake.js` writes the upload package into `stake/`, and [STAKE.md](STAKE.md) covers uploading it, the launch and replay URLs, and how the game meets Stake's approval checklist.
@@ -52,7 +56,7 @@ A major refinement, not a new game: the same board, Sebastian, dusk-to-storm sky
 
 **Chrome: machined ink steel** (`js/hud.js`, `css/style.css`)
 - Every control is one material: brushed ink-steel plates with a 1 px chamfer and a slim gold inlay; pressing sinks a plate; hover is the light catching its bevel. Gold is kept for money, Spin and the frame; Buy is ruby lacquer in a gold bezel.
-- The console reads **BALANCE · WIN · BET** in recessed readouts with fixed-advance digits. BET is always the bet level (the Double Chance module shows its extra cost on its own) and opens a grid of every bet level. Wins land in WIN first, then the balance rolls up; at rest every amount is the server's, shown with the currency's own decimals (never three: $16.125 reads $16.13). Messages have their own lane and never show money.
+- The console reads **BALANCE · WIN · BET** in recessed readouts with fixed-advance digits. BET is what a spin costs: the bet level, or 1.25× it in emerald while Double Chance is on. Tapping it opens a grid of every bet level. Wins land in WIN first, then the balance rolls up; at rest every amount is the server's, shown with the currency's own decimals (never three: $16.125 reads $16.13). Messages have their own lane and never show money.
 - The Spin button is the one loud element: a knurled gold ring round an enamel dome (violet at dusk, amber in the storm) that sinks under a press, arrows that cock, run and settle, STOP while a round can be hurried, and a tick ring counting down free spins.
 - The multiplier collector is an engraved empty socket until orbs charge it (no more "x0"). The plaque is an enamel cartouche of fixed width. Cluster pays sit on smoked pills.
 - Text is never under 11 px (8 px at 400×225), small controls have 44 px touch areas (36 px in the compact layout), and the canvas keeps clear of notches.
@@ -210,7 +214,7 @@ Each spin draws its randomness from `HMAC-SHA256(serverSeed, "clientSeed:nonce:c
 - **Tumble:** winners are removed, the rest fall and new symbols drop in. This repeats while wins keep forming.
 - **Multiplier orbs:** 2, 3, 4, 5, 6, 8, 10, 25, 50, 100, 250 or 500×. In the base game, the orbs from one spin add up and multiply that spin.
 - **Free spins:** 4+ scatters award 15 spins. Every orb is saved into a total multiplier that applies to each winning spin. 3+ scatters in the feature add +5.
-- **Double Chance:** costs 1.25× the bet; free spins trigger more often. **Buy:** 100× bet, with ante off.
+- **Double Chance:** costs 1.25× the bet (BET shows the total while it is on); free spins trigger more often. **Buy:** 100× bet, with ante off.
 - **Max win:** 5,000× the bet per round; reaching it ends the round, free spins included.
 - Scatters are counted once all tumbles have finished and don't win on their own.
 
